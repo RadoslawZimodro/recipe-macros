@@ -138,7 +138,7 @@ albo jako polecenia CLI (`python -m app.scripts.<nazwa>`).
 Każdy krok kończy się: działa, ma testy tam gdzie jest logika, README zaktualizowane,
 commit + push, zaznaczenie `[x]` poniżej.
 
-- [ ] **Krok 0: Fundament repo**
+- [x] **Krok 0: Fundament repo**
   Struktura katalogów, `docker-compose.yml` (postgres, redis, backend, frontend),
   `.env.example`, `.gitignore`, ruff + pre-commit, FastAPI z endpointem `/health`,
   Alembic skonfigurowany (pusta migracja inicjalna), README ze szkicem.
