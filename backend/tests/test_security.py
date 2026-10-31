@@ -74,6 +74,10 @@ def test_refresh_tokens_are_random_and_hashed_deterministically():
 
 def test_default_jwt_secret_is_rejected_when_cookies_are_secure():
     with pytest.raises(ValueError, match="JWT_SECRET"):
-        Settings(cookie_secure=True)
+        Settings(cookie_secure=True, app_db_password="a-real-password")
 
-    assert Settings(cookie_secure=True, jwt_secret="a-real-secret").cookie_secure is True
+    with pytest.raises(ValueError, match="APP_DB_PASSWORD"):
+        Settings(cookie_secure=True, jwt_secret="a-real-secret")
+
+    secure = Settings(cookie_secure=True, jwt_secret="a-real-secret", app_db_password="a-real-pw")
+    assert secure.cookie_secure is True
