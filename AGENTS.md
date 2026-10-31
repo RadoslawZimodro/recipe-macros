@@ -144,7 +144,7 @@ commit + push, zaznaczenie `[x]` poniżej.
   Alembic skonfigurowany (pusta migracja inicjalna), README ze szkicem.
   Utworzenie repo na GitHubie i pierwszy push.
   Kryterium: `docker compose up` stawia całość, `/health` zwraca 200, repo jest na GitHubie.
-- [ ] **Krok 1: Użytkownicy i auth**
+- [x] **Krok 1: Użytkownicy i auth**
   Tabela `users`, rejestracja, logowanie, JWT, izolacja danych per użytkownik.
   Kryterium: testy rejestracji/logowania, chronione endpointy zwracają 401 bez tokenu.
 - [ ] **Krok 2: Schemat przepisów**
