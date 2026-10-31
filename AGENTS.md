@@ -151,20 +151,24 @@ commit + push, zaznaczenie `[x]` poniżej.
   Dopracowanie schematu (pytaj o decyzje), migracje, indeksy, ręczne dodawanie przepisu
   przez API (bez importu).
   Kryterium: CRUD przepisów, składników i kroków, testy.
-- [ ] **Krok 3: Import z linku, ścieżka JSON-LD**
+- [ ] **Krok 3: Import z linku, pobieranie i ścieżka JSON-LD (bez AI)**
   Bezpieczne pobieranie strony (sekcja 6), wyciąganie `schema.org/Recipe`, zapis przepisu,
   cache w Redis, upsert po `(user_id, source_url)`.
   Kryterium: import działa dla kilku polskich i angielskich serwisów, testy na zapisanych
   fixtures HTML.
-- [ ] **Krok 4: Import z linku, fallback LLM**
-  Gdy brak JSON-LD: oczyszczenie HTML do tekstu, wywołanie LLM ze strukturalnym wyjściem,
-  walidacja, obsługa błędów.
-  Kryterium: fallback działa na stronie bez JSON-LD, błędy są czytelne.
-- [ ] **Krok 5: Parser składników**
-  `raw_text` → ilość, jednostka, nazwa składnika (LLM w batchu na cały przepis, wynik
-  cache'owany), normalizacja do `ingredients`.
-  Kryterium: testy na typowych zapisach ("2 łyżki oliwy", "1 średnia cebula",
-  "szczypta soli", "200 g mąki").
+- [ ] **Krok 4: Import z linku, AI (fallback + parser składników)**
+  AI jest sercem importu i samo przypisuje elementy do pól przepisu (hybryda: dane
+  strukturalne z JSON-LD, jeśli są, plus AI zawsze). Strona bez JSON-LD: oczyszczenie HTML
+  do tekstu i ekstrakcja całego przepisu przez LLM. Każdy import: `raw_text` → ilość,
+  jednostka (z tabeli `units`), produkt z katalogu (LLM w jednym batchu na cały przepis,
+  strukturalny JSON walidowany Pydantic, wynik cache'owany w Redis, liczba wywołań
+  logowana). Model: domyślnie `claude-haiku-5-5`, nazwa w zmiennej środowiskowej.
+  Produkt spoza katalogu: prywatny produkt użytkownika z `source = llm_estimate` (makro
+  szacowane przez AI, oznaczone jako szacunek); wspólny katalog nie jest zapisywany przez AI.
+  Kryterium: import działa na stronie bez JSON-LD, testy parsera na typowych zapisach
+  ("2 łyżki oliwy", "1 średnia cebula", "szczypta soli", "200 g mąki") z zamockowanym LLM,
+  błędy są czytelne.
+- **Krok 5: scalony z Krokiem 4** (numeracja zachowana, żeby nie przenumerowywać Kroków 6-10).
 - [ ] **Krok 6: Przeliczanie na gramy i makro**
   Tabela `unit_conversions`, przeliczanie jednostek domowych na gramy, dane odżywcze
   (Open Food Facts i/lub ręczne), makro przepisu i na porcję, oznaczanie źródła wartości,
