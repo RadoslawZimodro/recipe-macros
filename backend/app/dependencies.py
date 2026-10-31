@@ -1,8 +1,8 @@
 """Shared FastAPI auth dependencies and cookie names.
 
-get_current_user reads the access token from an HttpOnly cookie, verifies it and loads the
-account. The user id used for data isolation comes ONLY from the verified token, never
-from the request body, query or path.
+get_current_user reads the access token from an HttpOnly cookie, verifies it, loads the
+account and binds the database tenant. The user id used for data isolation comes ONLY
+from the verified token, never from the request body, query or path.
 """
 
 import secrets
@@ -12,7 +12,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app import security
-from app.db import get_session
+from app.db import get_session, set_tenant
 from app.models import User
 
 ACCESS_COOKIE = "access_token"
@@ -41,6 +41,8 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     user = session.get(User, user_id)
     if user is None or not user.is_active:
         raise _UNAUTHORIZED
+    # From here on every query of this request is filtered by RLS to this user's rows.
+    set_tenant(session, user.id)
     return user
 
 

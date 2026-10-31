@@ -4,6 +4,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _INSECURE_DEV_JWT_SECRET = "dev-insecure-secret-do-not-use-in-production"
+_INSECURE_DEV_DB_PASSWORD = "app_pass_dev"
 
 
 class Settings(BaseSettings):
@@ -12,6 +13,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5440/recipe_macros"
+    # Migrations run as the database owner; the API connects as the restricted `app_user`
+    # (DATABASE_URL), so PostgreSQL Row-Level Security applies to it. If unset, migrations
+    # fall back to DATABASE_URL.
+    admin_database_url: str | None = None
+    # Password given to the app_user role by migration 0003 (must match DATABASE_URL).
+    app_db_password: str = _INSECURE_DEV_DB_PASSWORD
     redis_url: str = "redis://localhost:6379/0"
     anthropic_api_key: str = ""
 
@@ -40,10 +47,12 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @model_validator(mode="after")
-    def _reject_default_secret_over_https(self) -> "Settings":
-        # Secure cookies mean a real (HTTPS) deployment: never sign tokens with the public default.
+    def _reject_default_secrets_over_https(self) -> "Settings":
+        # Secure cookies mean a real (HTTPS) deployment: never use the public dev defaults.
         if self.cookie_secure and self.jwt_secret == _INSECURE_DEV_JWT_SECRET:
             raise ValueError("JWT_SECRET must be set when COOKIE_SECURE is true")
+        if self.cookie_secure and self.app_db_password == _INSECURE_DEV_DB_PASSWORD:
+            raise ValueError("APP_DB_PASSWORD must be set when COOKIE_SECURE is true")
         return self
 
 
