@@ -1,16 +1,31 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis import Redis
 from sqlalchemy import text
 
 from app.config import get_settings
 from app.db import engine
+from app.dependencies import CSRF_HEADER
+from app.routers import auth
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Recipe Macros API")
+
+# allow_credentials=True is required for the browser to send/receive the auth cookies. The
+# CORS spec forbids combining credentials with wildcard origins/headers, so both are explicit.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", CSRF_HEADER],
+)
+
+app.include_router(auth.router)
 
 
 def _check_db() -> bool:
