@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 1 (users and authentication). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 2 (recipe schema and manual CRUD). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -87,13 +87,146 @@ Design decisions:
 - Emails are lowercased by the API and by a `CHECK (email = lower(email))` constraint in
   PostgreSQL, so `UNIQUE(email)` is effectively case-insensitive.
 
+## Recipes API
+
+Everything below needs a session; `POST`/`PUT`/`DELETE` also need the `X-CSRF-Token` header.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /recipes` | Create a recipe with its steps and ingredient lines (`201`; `409` if the same `source_url` is already saved) |
+| `GET /recipes?q=&tag=&limit=&offset=` | Page of recipes, newest first; `q` searches the title (substring + typos), `tag` filters |
+| `GET /recipes/{id}` | One recipe with ordered steps and ingredient lines |
+| `PUT /recipes/{id}` | Replace the whole recipe; steps and lines are replaced as a unit in one transaction |
+| `DELETE /recipes/{id}` | Soft delete (`204`) |
+| `GET /ingredients?q=` | Search products: the shared catalog plus your own |
+| `POST /ingredients` | Add a private product (nutrition per 100 g, `source` is always `manual`) |
+| `GET /units` | Allowed units for ingredient lines |
+
+Other users' recipes return `404`, not `403`, so their existence is not revealed.
+Nutrition values are estimates and carry a `source` (`off`, `manual`, `llm_estimate`).
+
 ## Database schema
 
-_Diagram coming in Step 2._
+```mermaid
+erDiagram
+    users ||--o{ recipes : owns
+    users ||--o{ ingredients : "owns private"
+    users ||--o{ refresh_tokens : has
+    recipes ||--o{ recipe_steps : has
+    recipes ||--o{ recipe_ingredients : has
+    ingredients |o--o{ recipe_ingredients : "linked by"
+    units |o--o{ recipe_ingredients : "measured in"
+
+    users {
+        int id PK
+        text email UK "lower-case CHECK"
+        text password_hash
+        bool is_active
+    }
+    recipes {
+        int id PK
+        int user_id FK "RLS"
+        text title
+        text source_url "unique per user while active"
+        int servings
+        text_array tags "GIN index"
+        jsonb source_nutrition
+        text import_method "jsonld | llm | manual"
+        timestamptz updated_at "trigger"
+        timestamptz deleted_at "soft delete"
+    }
+    recipe_steps {
+        int recipe_id PK_FK
+        int position PK
+        int user_id "denormalized for RLS"
+        text instruction
+    }
+    recipe_ingredients {
+        int id PK
+        int recipe_id FK
+        int user_id "denormalized for RLS"
+        int position
+        int ingredient_id FK "nullable"
+        text raw_text
+        numeric quantity
+        text unit_code FK "nullable"
+        bool is_optional
+    }
+    ingredients {
+        int id PK
+        int user_id FK "NULL = shared catalog"
+        text canonical_name "unique per scope"
+        numeric kcal_per_100g
+        text source "off | manual | llm_estimate"
+    }
+    units {
+        text code PK
+        text kind "mass | volume | count"
+    }
+```
+
+Design decisions:
+
+- **Row-Level Security.** The API connects as `app_user`, a role that is neither superuser nor
+  table owner and has `NOBYPASSRLS`; migrations run as the owner. Each request sets
+  `app.current_user_id` (transaction-local `set_config`, re-applied after every commit), and the
+  policies compare `user_id` with `app_current_user_id()`. A forgotten `WHERE user_id = ...` cannot
+  leak data, and an unset tenant sees nothing (fails closed). `tests/test_rls.py` proves this with
+  raw SQL as `app_user`.
+- **Least privilege.** `app_user` gets only the statements the code uses (for example no `DELETE`
+  on `recipes`, read-only `units`), granted table by table in the migrations.
+- **Denormalized `user_id` on children.** `recipe_steps` and `recipe_ingredients` carry `user_id`
+  and reference `recipes(id, user_id)` with a composite foreign key. The database therefore
+  refuses a child whose owner differs from its recipe's, and the RLS policy is the same cheap
+  comparison everywhere instead of a sub-query.
+- **Foreign keys bypass RLS**, so a guessed `ingredient_id` of someone else's private product would
+  be accepted by the FK alone. The service checks ids through RLS (`visible_ingredient_ids.sql`).
+- **Shared catalog + private products.** `ingredients.user_id IS NULL` marks the shared catalog
+  (read-only for the API, filled by scripts later); users add private products. Names are unique
+  per scope through two partial unique indexes on `lower(canonical_name)`.
+- **Soft delete.** `deleted_at` keeps the row so the food log (Step 7) can still compute macros
+  for old entries. The unique index on `(user_id, source_url)` is partial (`WHERE source_url IS NOT
+  NULL AND deleted_at IS NULL`), so a deleted recipe can be imported again.
+- **Units dictionary** (`units`) with a foreign key instead of free text; an unrecognised unit is
+  `NULL` and the original wording stays in `raw_text`.
+- **`updated_at` is maintained by a trigger** (`WHEN OLD.* IS DISTINCT FROM NEW.*`), so it is right
+  for any writer, including manual SQL.
+- **Writes through the ORM, reads as SQL files** in `backend/app/sql/`. The ORM does plain
+  inserts/updates; every query that reads or searches is a readable `.sql` file.
 
 ## Example SQL queries
 
-_Coming with Steps 6-8 (macros per serving, daily totals, pantry matching)._
+A recipe with its steps and ingredient lines in one round trip
+([`get_recipe.sql`](backend/app/sql/get_recipe.sql), abridged): correlated sub-queries aggregate the
+children into ordered JSON arrays. No `user_id` filter appears; RLS adds it.
+
+```sql
+SELECT r.id, r.title, r.servings,
+       COALESCE((SELECT json_agg(json_build_object('position', s.position,
+                                                   'instruction', s.instruction)
+                                 ORDER BY s.position)
+                 FROM recipe_steps s WHERE s.recipe_id = r.id), '[]'::json) AS steps
+FROM recipes r
+WHERE r.id = :recipe_id AND r.deleted_at IS NULL;
+```
+
+Title search ([`list_recipes.sql`](backend/app/sql/list_recipes.sql), abridged): `ILIKE '%q%'`
+finds substrings and the `pg_trgm` operator `%` finds near matches (typos); both can use the
+trigram GIN index `ix_recipes_title_trgm`. Best match first, otherwise newest first.
+
+```sql
+SELECT r.id, r.title
+FROM recipes r
+WHERE r.deleted_at IS NULL
+  AND (r.title ILIKE :pattern OR r.title % :q)
+ORDER BY similarity(r.title, :q) DESC, r.created_at DESC
+LIMIT :limit OFFSET :offset;
+```
+
+Known limitations: search does not fold Polish diacritics (a typo in an accented letter may or may
+not match through trigram similarity); the shared product catalog stays empty until the Open Food
+Facts import in Step 6, and manual correction of shared products is intentionally left out for now
+(users add their own private product instead).
 
 ## License
 

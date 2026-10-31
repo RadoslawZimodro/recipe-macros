@@ -147,7 +147,7 @@ commit + push, zaznaczenie `[x]` poniżej.
 - [x] **Krok 1: Użytkownicy i auth**
   Tabela `users`, rejestracja, logowanie, JWT, izolacja danych per użytkownik.
   Kryterium: testy rejestracji/logowania, chronione endpointy zwracają 401 bez tokenu.
-- [ ] **Krok 2: Schemat przepisów**
+- [x] **Krok 2: Schemat przepisów**
   Dopracowanie schematu (pytaj o decyzje), migracje, indeksy, ręczne dodawanie przepisu
   przez API (bez importu).
   Kryterium: CRUD przepisów, składników i kroków, testy.
