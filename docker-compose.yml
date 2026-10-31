@@ -1,0 +1,70 @@
+# Development stack: `docker compose up` starts everything with hot reload.
+# Values come from .env (see .env.example); defaults below are for local dev only.
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-recipe_macros}
+    ports:
+      # Host ports are shifted so this stack runs next to the author's other local projects:
+      # 5432 native PostgreSQL, 5433/8000/5173 savings app, 5434/6380/8001-8002/5174-5175 movie recommender.
+      - "${DB_HOST_PORT:-5440}:5432"
+    volumes:
+      # postgres:18 images keep data under /var/lib/postgresql/<major>/, so mount the parent.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-recipe_macros}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-recipe_macros}
+      REDIS_URL: redis://redis:6379/0
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Bind mounts on Windows do not propagate file events, so the reloader has to poll.
+      WATCHFILES_FORCE_POLLING: "true"
+    # Migrations run in the entrypoint; this only starts the dev server.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "${BACKEND_HOST_PORT:-8010}:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    command: npm run dev -- --host
+    ports:
+      # Same port inside and outside: the Vite HMR client connects to the page's port.
+      - "5180:5180"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # keep dependencies from the image, do not shadow them with the host
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
