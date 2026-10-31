@@ -1,0 +1,15 @@
+import tailwindcss from '@tailwindcss/vite'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  server: {
+    // 5180, not 5173-5175: those are used by the author's other local projects.
+    port: 5180,
+    strictPort: true,
+    // Bind mounts on Windows do not propagate file events, so the watcher has to poll.
+    watch: { usePolling: true },
+  },
+})
