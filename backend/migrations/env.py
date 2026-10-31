@@ -8,7 +8,9 @@ from app.config import get_settings
 from app.db import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Tests may preset the URL on the Config; otherwise use the application settings.
+if config.get_main_option("sqlalchemy.url") is None:
+    config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
