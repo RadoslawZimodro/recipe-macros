@@ -34,7 +34,11 @@ services:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-recipe_macros}
+      # The API connects as the restricted app_user (Row-Level Security applies to it);
+      # migrations run as the database owner via ADMIN_DATABASE_URL.
+      DATABASE_URL: postgresql+psycopg://app_user:${APP_DB_PASSWORD:-app_pass_dev}@db:5432/${POSTGRES_DB:-recipe_macros}
+      ADMIN_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-recipe_macros}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-app_pass_dev}
       REDIS_URL: redis://redis:6379/0
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-dev-insecure-secret-do-not-use-in-production}

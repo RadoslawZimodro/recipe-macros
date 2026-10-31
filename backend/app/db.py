@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import MetaData, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -24,6 +24,30 @@ class Base(DeclarativeBase):
     """Base class for ORM models; its metadata drives Alembic autogenerate."""
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+# The tenant id lives in a transaction-local setting (`set_config(..., true)`), which PostgreSQL
+# discards at COMMIT/ROLLBACK, so it can never leak to another request through the connection
+# pool. It is re-applied at the start of every transaction from the value kept on the session,
+# so request flows that commit more than once keep their tenant context.
+@event.listens_for(SessionLocal, "after_begin")
+def _apply_tenant_context(session: Session, transaction, connection) -> None:
+    user_id = session.info.get("tenant_user_id")
+    if user_id is not None:
+        connection.execute(
+            text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": str(user_id)}
+        )
+
+
+def set_tenant(session: Session, user_id: int) -> None:
+    """Bind the RLS tenant to `user_id` for this session (current and later transactions).
+
+    Must only be called with the id of an authenticated user (see get_current_user).
+    """
+    session.info["tenant_user_id"] = user_id
+    session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": str(user_id)}
+    )
 
 
 def get_session() -> Iterator[Session]:
