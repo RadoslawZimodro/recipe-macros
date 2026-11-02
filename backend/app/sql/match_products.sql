@@ -2,7 +2,9 @@
 -- catalog plus their own; Row-Level Security does the filtering). Names with no match are
 -- simply absent from the result.
 --   * an exact (case-insensitive) name always wins over a merely similar one;
---   * the user's own product shadows a shared one with the same name;
+--   * among products with the same name: the user's own MANUAL one first (they typed it in),
+--     then a shared (measured) one, then the user's own AI estimate. An old AI guess therefore
+--     never hides measured data;
 --   * "similar" means pg_trgm similarity >= :min_similarity, deliberately high, because a wrong
 --     link would silently give a recipe wrong macros. The % operator first narrows the
 --     candidates with the trigram index ix_ingredients_name_trgm.
@@ -25,7 +27,9 @@ CROSS JOIN LATERAL (
            AND regexp_replace(g.canonical_name, '[^0-9]', '', 'g')
              = regexp_replace(w.name, '[^0-9]', '', 'g'))
     ORDER BY (lower(g.canonical_name) = lower(w.name)) DESC,
-             (g.user_id IS NOT NULL) DESC,
+             CASE WHEN g.user_id IS NOT NULL AND g.source = 'manual' THEN 0
+                  WHEN g.user_id IS NULL THEN 1
+                  ELSE 2 END,
              similarity(g.canonical_name, w.name) DESC,
              g.id
     LIMIT 1

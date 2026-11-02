@@ -10,6 +10,8 @@ from app.services.products import (
     plausible_macros,
     resolve_products,
 )
+from tests.seed import conversion as seed_conversion
+from tests.seed import product as seed_product
 from tests.test_ingredients import FLOUR, add_shared
 
 
@@ -214,3 +216,168 @@ def test_several_products_in_one_call(alice, as_alice, admin_db):
 def test_nothing_to_resolve(as_alice):
     assert resolve_products(as_alice, 1, []) == {}
     assert resolve_products(as_alice, 1, [cand("   ")]) == {}
+
+
+# --- precedence: the user's manual entry, then measured data, then the user's AI estimate ---
+def test_a_measured_shared_product_beats_the_users_old_ai_estimate(alice, as_alice, admin_db):
+    seed_product(admin_db, "masło", 717, 0.9, 81, 0.1, user_id=alice.user_id, source="llm_estimate")
+    shared = seed_product(admin_db, "masło", 717, 0.9, 81, 0.1)
+
+    assert resolve_products(as_alice, alice.user_id, [cand("masło")]) == {"masło": shared}
+
+
+def test_the_users_manual_product_beats_a_shared_one(alice, as_alice, admin_db):
+    seed_product(admin_db, "masło", 717, 0.9, 81, 0.1)
+    mine = seed_product(admin_db, "masło", 700, 1, 80, 1, user_id=alice.user_id, source="manual")
+
+    assert resolve_products(as_alice, alice.user_id, [cand("masło")]) == {"masło": mine}
+
+
+def test_the_users_ai_estimate_is_used_when_nothing_better_exists(alice, as_alice, admin_db):
+    estimate = seed_product(
+        admin_db, "masło", 717, 0.9, 81, 0.1, user_id=alice.user_id, source="llm_estimate"
+    )
+
+    assert resolve_products(as_alice, alice.user_id, [cand("masło")]) == {"masło": estimate}
+
+
+def test_losing_a_creation_race_returns_the_id_of_the_winner_not_the_name(
+    alice, as_alice, admin_db, monkeypatch
+):
+    # Another import creates "cynamon" between our lookup and our insert. The lookup is made to
+    # miss once; the insert then conflicts, and the code must fetch the id of the existing row.
+    winner = seed_product(
+        admin_db, "cynamon", 247, 4, 1.2, 80, user_id=alice.user_id, source="llm_estimate"
+    )
+    from app.services import products as products_module
+
+    real = products_module.load_sql
+    calls = {"match": 0}
+
+    def load(name):
+        if name == "match_products.sql":
+            calls["match"] += 1
+            if calls["match"] == 1:  # the first lookup finds nothing
+                return text(
+                    "SELECT NULL::text AS name, NULL::int AS id, NULL::text AS canonical_name, "
+                    "NULL::boolean AS is_exact WHERE false"
+                )
+        return real(name)
+
+    monkeypatch.setattr(products_module, "load_sql", load)
+
+    ids = resolve_products(as_alice, alice.user_id, [cand("cynamon", (247, 4.0, 1.2, 80.0))])
+
+    assert ids == {"cynamon": winner}  # an int id, not the string "cynamon"
+
+
+# --- what a spoon or a piece weighs ---
+def stored_conversions(admin_db, user_id):
+    rows = admin_db.execute(
+        text(
+            "SELECT i.canonical_name, c.unit_code, c.grams_per_unit, c.source "
+            "FROM unit_conversions c JOIN ingredients i ON i.id = c.ingredient_id "
+            "WHERE c.user_id = :u ORDER BY 1, 2"
+        ),
+        {"u": user_id},
+    )
+    return [(n, u, float(g), s) for n, u, g, s in rows]
+
+
+def cand_w(name, *, density=None, weights=(), macros=(247, 4.0, 1.2, 80.0)):
+    kcal, protein, fat, carbs = macros
+    return ProductCandidate(name, kcal, protein, fat, carbs, density, tuple(weights))
+
+
+def test_a_new_product_gets_its_density_and_piece_weight(alice, as_alice, admin_db):
+    resolve_products(
+        as_alice, alice.user_id, [cand_w("jajko", density=None, weights=[("piece", 55.0)])]
+    )
+    resolve_products(as_alice, alice.user_id, [cand_w("mleko", density=1.03)])
+    as_alice.commit()
+
+    assert stored_conversions(admin_db, alice.user_id) == [
+        ("jajko", "piece", 55.0, "llm_estimate"),
+    ]  # the density went into the product row itself
+    density = admin_db.execute(
+        text("SELECT density_g_per_ml FROM ingredients WHERE canonical_name = 'mleko'")
+    ).scalar_one()
+    assert float(density) == 1.03
+
+
+def test_unit_weights_of_all_lines_of_a_product_are_merged(alice, as_alice, admin_db):
+    resolve_products(
+        as_alice,
+        alice.user_id,
+        [
+            cand_w("czosnek", weights=[("clove", 5.0)]),
+            cand_w("czosnek", weights=[("piece", 40.0), ("clove", 99.0)]),  # first value wins
+        ],
+    )
+    as_alice.commit()
+
+    assert stored_conversions(admin_db, alice.user_id) == [
+        ("czosnek", "clove", 5.0, "llm_estimate"),
+        ("czosnek", "piece", 40.0, "llm_estimate"),
+    ]
+
+
+def test_ai_estimates_never_override_what_is_already_known(alice, as_alice, admin_db):
+    egg = seed_product(admin_db, "jajko", 143, 12.6, 9.5, 0.7)
+    seed_conversion(admin_db, egg, "piece", 55)  # a curated shared weight
+    flour = seed_product(admin_db, "mąka", 364, 10.3, 1, 76.3, density=0.53)  # density known
+    onion = seed_product(admin_db, "cebula", 40, 1.1, 0.1, 9.3)  # nothing known
+
+    resolve_products(
+        as_alice,
+        alice.user_id,
+        [
+            cand_w("jajko", weights=[("piece", 70.0)]),
+            cand_w("mąka", density=0.9),
+            cand_w("cebula", density=0.6, weights=[("piece", 110.0)]),
+        ],
+    )
+    as_alice.commit()
+
+    assert stored_conversions(admin_db, alice.user_id) == [
+        ("cebula", "ml", 0.6, "llm_estimate"),
+        ("cebula", "piece", 110.0, "llm_estimate"),
+    ]  # only the gaps were filled: no second egg weight, no second flour density
+    assert egg and flour and onion
+
+
+def test_filling_conversions_twice_changes_nothing(alice, as_alice, admin_db):
+    seed_product(admin_db, "cebula", 40, 1.1, 0.1, 9.3)
+    for _ in range(2):
+        resolve_products(as_alice, alice.user_id, [cand_w("cebula", weights=[("piece", 110.0)])])
+        as_alice.commit()
+
+    assert len(stored_conversions(admin_db, alice.user_id)) == 1
+
+
+@pytest.mark.parametrize(
+    ("density", "weights"),
+    [
+        (0.0, [("piece", 0.0)]),
+        (50.0, [("piece", 5000.0)]),  # a piece of 5 kg, a density of 50 g/ml
+        (-1.0, [("g", 10.0)]),  # a mass unit has no "weight per unit"
+        (None, [("tbsp", 15.0)]),  # only count units carry a weight per unit
+        (None, [("piece", None)]),
+    ],
+)
+def test_implausible_conversions_are_ignored(alice, as_alice, admin_db, density, weights):
+    seed_product(admin_db, "cebula", 40, 1.1, 0.1, 9.3)
+
+    resolve_products(as_alice, alice.user_id, [cand_w("cebula", density=density, weights=weights)])
+    as_alice.commit()
+
+    assert stored_conversions(admin_db, alice.user_id) == []
+
+
+def test_conversions_of_a_product_that_could_not_be_resolved_are_dropped(alice, as_alice, admin_db):
+    broken = cand_w("dziwny", density=1.0, weights=[("piece", 10.0)], macros=(900, 90, 90, 90))
+
+    assert resolve_products(as_alice, alice.user_id, [broken]) == {}
+    as_alice.commit()
+
+    assert stored_conversions(admin_db, alice.user_id) == []
