@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.dependencies import get_current_user, require_csrf
 from app.models import User
-from app.schemas.recipe import RecipeIn, RecipeListOut, RecipeOut
+from app.schemas.nutrition import NutritionOut
+from app.schemas.recipe import LinePatch, RecipeIn, RecipeListOut, RecipeOut
+from app.services import nutrition as nutrition_service
 from app.services import recipes as recipe_service
 
 # get_current_user also binds the RLS tenant, so it must run for every route here.
@@ -44,6 +46,26 @@ def list_recipes(
 
 @router.get("/{recipe_id}", response_model=RecipeOut)
 def get_recipe(recipe_id: int, session: Session = Depends(get_session)) -> RecipeOut:
+    return recipe_service.get_recipe(session, recipe_id)
+
+
+@router.get("/{recipe_id}/nutrition", response_model=NutritionOut)
+def get_nutrition(
+    recipe_id: int,
+    include_optional: bool = Query(False, description="Count optional ingredient lines too"),
+    session: Session = Depends(get_session),
+) -> NutritionOut:
+    """Macronutrients of the recipe: total and per serving, always flagged as an estimate, with
+    the coverage, the share backed by non-AI data, and the source of every line."""
+    return nutrition_service.get_nutrition(session, recipe_id, include_optional=include_optional)
+
+
+@router.patch("/{recipe_id}/ingredients/{line_id}", response_model=RecipeOut)
+def patch_ingredient_line(
+    recipe_id: int, line_id: int, patch: LinePatch, session: Session = Depends(get_session)
+) -> RecipeOut:
+    """Correct one ingredient line: type in its weight in grams and/or change its product."""
+    recipe_service.patch_line(session, recipe_id, line_id, patch)
     return recipe_service.get_recipe(session, recipe_id)
 
 

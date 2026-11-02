@@ -141,12 +141,13 @@ def test_the_shared_catalog_is_read_only_for_the_app_role(alice, admin_db):
         assert count(conn, "ingredients") == 1  # readable
     with pytest.raises(DBAPIError, match="row-level security"), as_tenant(alice.user_id) as conn:
         conn.execute(text(insert), {"name": "Podrzucony"})
-    # No UPDATE privilege at all, so editing a shared product is refused outright.
-    with (
-        pytest.raises(ProgrammingError, match="permission denied"),
-        as_tenant(alice.user_id) as conn,
-    ):
-        conn.execute(text("UPDATE ingredients SET kcal_per_100g = 900"))
+    # The role may UPDATE products (to correct its own), but the policy leaves it no shared row
+    # to update: the statement succeeds and touches nothing.
+    with as_tenant(alice.user_id) as conn:
+        changed = conn.execute(text("UPDATE ingredients SET kcal_per_100g = 900"))
+    assert changed.rowcount == 0
+    kcal = admin_db.execute(text("SELECT kcal_per_100g FROM ingredients")).scalar_one()
+    assert kcal == 0
 
 
 @pytest.mark.parametrize(

@@ -87,13 +87,21 @@ def _migrated_database():
 def _clean_state():
     """Empty every user-data table and reset the in-memory rate limiter before each test.
 
-    `units` is dictionary data seeded by a migration, so it is kept.
+    `units` is dictionary data seeded by a migration, so it is kept. The general conversion
+    seeded by the same migration (a pinch is 0.5 g) is truncated together with the products
+    that other conversions point to, so it is put back.
     """
     with _admin_engine.begin() as conn:
         conn.execute(
             text(
                 "TRUNCATE users, refresh_tokens, ingredients, recipes, recipe_steps, "
-                "recipe_ingredients RESTART IDENTITY CASCADE"
+                "recipe_ingredients, unit_conversions RESTART IDENTITY CASCADE"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO unit_conversions (unit_code, grams_per_unit, source) "
+                "VALUES ('pinch', 0.5, 'manual')"
             )
         )
     rate_limit.clear()

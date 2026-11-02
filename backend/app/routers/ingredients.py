@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.dependencies import get_current_user, require_csrf
 from app.models import Ingredient, User
-from app.schemas.ingredient import IngredientIn, IngredientListOut, IngredientOut, UnitOut
+from app.schemas.ingredient import (
+    IngredientIn,
+    IngredientListOut,
+    IngredientOut,
+    IngredientPatch,
+    UnitOut,
+)
 from app.services.sql import like_pattern, load_sql
 
 router = APIRouter(
@@ -18,6 +24,13 @@ router = APIRouter(
 units_router = APIRouter(
     prefix="/units", tags=["ingredients"], dependencies=[Depends(get_current_user)]
 )
+
+
+def _out(ingredient: Ingredient) -> IngredientOut:
+    return IngredientOut(
+        **{c: getattr(ingredient, c) for c in IngredientOut.model_fields if c != "is_shared"},
+        is_shared=ingredient.user_id is None,
+    )
 
 
 @router.get("", response_model=IngredientListOut)
@@ -62,10 +75,35 @@ def create_ingredient(
         raise HTTPException(
             status.HTTP_409_CONFLICT, "You already have a product with this name"
         ) from None
-    return IngredientOut(
-        **{c: getattr(ingredient, c) for c in IngredientOut.model_fields if c != "is_shared"},
-        is_shared=False,
-    )
+    return _out(ingredient)
+
+
+@router.patch("/{ingredient_id}", response_model=IngredientOut)
+def update_ingredient(
+    ingredient_id: int, patch: IngredientPatch, session: Session = Depends(get_session)
+) -> IngredientOut:
+    """Correct one of your own products. Shared products cannot be changed."""
+    ingredient = session.get(Ingredient, ingredient_id)  # Row-Level Security: shared + own
+    if ingredient is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    if ingredient.user_id is None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Shared products cannot be edited. Add your own product with the same name: "
+            "your product takes precedence over the shared one.",
+        )
+
+    for name in patch.model_fields_set:
+        setattr(ingredient, name, getattr(patch, name))
+    ingredient.source = "manual"
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "You already have a product with this name"
+        ) from None
+    return _out(ingredient)
 
 
 @units_router.get("", response_model=list[UnitOut])
