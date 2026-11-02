@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 2 (recipe schema and manual CRUD). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 3 (import from a link, JSON-LD). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -101,9 +101,79 @@ Everything below needs a session; `POST`/`PUT`/`DELETE` also need the `X-CSRF-To
 | `GET /ingredients?q=` | Search products: the shared catalog plus your own |
 | `POST /ingredients` | Add a private product (nutrition per 100 g, `source` is always `manual`) |
 | `GET /units` | Allowed units for ingredient lines |
+| `POST /recipes/import` | Import a recipe from a link (see below) |
 
 Other users' recipes return `404`, not `403`, so their existence is not revealed.
 Nutrition values are estimates and carry a `source` (`off`, `manual`, `llm_estimate`).
+
+## Import from a link
+
+`POST /recipes/import` with `{"url": "...", "refresh": false}` fetches a recipe page and saves its
+schema.org `Recipe` (read from the page's JSON-LD) as a normal recipe with `import_method = jsonld`
+and a link to the original in `source_url`.
+
+| Result | Meaning |
+|---|---|
+| `201 {"status": "created"}` | New recipe saved |
+| `200 {"status": "existing"}` | You already have it; nothing was fetched (your edits are safe) |
+| `200 {"status": "refreshed"}` | `refresh: true`: page fetched again, recipe overwritten in place (manual edits are lost) |
+| `422/429/502/503/504` | `{"detail": {"code": ..., "message": ...}}` with a stable `code` such as `robots_disallowed`, `blocked_address`, `unsupported_site`, `no_recipe_data`, `access_denied`, `rate_limited` |
+
+Ingredient lines are saved as text (`raw_text`) only; splitting them into quantity, unit and product
+is done by the AI step (Step 4). Try the pipeline on any address without saving anything:
+
+```bash
+docker compose exec backend python -m app.scripts.fetch_recipe "https://example.com/some-recipe"
+```
+
+How a page is fetched (`app/services/safe_fetch.py`, `page_fetcher.py`, `robots.py`):
+
+- **SSRF protection.** A user-supplied address must never make the server call its own network.
+  The host name is resolved by us and rejected unless *every* address is public (loopback, private,
+  link-local, cloud metadata `169.254.169.254`, CGNAT, multicast, IPv4-mapped/NAT64/6to4 IPv6 and
+  odd literals like `2130706433` are all refused). The connection then goes to the **IP we checked**
+  (the URL is rewritten to the IP; the name stays in the `Host` header and is used for TLS
+  verification), so DNS cannot answer differently between check and connect (DNS rebinding).
+- **Redirects** are never followed by the HTTP library: each hop is validated and resolved again (max 5).
+  Proxy settings from the environment are ignored, since a proxy would bypass the pinned IP.
+- **Limits:** only `http(s)` on ports 80/443, no credentials in the URL, HTML only, 2 MB measured
+  *after* decompression (gzip bombs), connect 5 s / read 10 s / 15 s in total.
+- **robots.txt** per RFC 9309 with a small parser of our own (`urllib.robotparser` ignores the `*`
+  and `$` wildcards): a missing file allows, a disallow refuses, an unreachable one (5xx, network) is
+  treated as a disallow. Rules are cached for 24 h (10 min when unreachable).
+- **Politeness:** identifies itself as `RecipeMacrosBot/0.1 (+repo URL)`, no cookies, at most 10
+  imports per minute per user (a Redis counter that works across workers), YouTube/Instagram/TikTok
+  links are refused with a clear message, pages behind a login or paywall (401/402/403) are not bypassed.
+- **Cache.** The fetched HTML is stored compressed in Redis for 24 h, keyed by the normalized URL, so
+  re-parsing or the AI step does not hit the site again. Redis being down never breaks an import.
+- **URL normalization** (`source_url`, upsert key, cache key): host in lower case, default port and
+  `#fragment` dropped, tracking parameters (`utm_*`, `fbclid`, `gclid`, ...) removed.
+
+The save is one SQL statement, an upsert on the partial unique index
+([`upsert_imported_recipe.sql`](backend/app/sql/upsert_imported_recipe.sql)):
+
+```sql
+INSERT INTO recipes (user_id, title, source_url, ..., import_method, imported_at)
+VALUES (:user_id, :title, :source_url, ..., :import_method, now())
+ON CONFLICT (user_id, source_url) WHERE source_url IS NOT NULL AND deleted_at IS NULL
+DO UPDATE SET title = EXCLUDED.title, ..., imported_at = EXCLUDED.imported_at
+RETURNING id, (xmax = 0) AS inserted;   -- xmax <> 0 means an existing row was updated
+```
+
+**Tested on real sites** (read-only, nothing stored in the repo; tests use synthetic pages written
+for them): works on Kuchnia Doroty and Kuchnia Lidla (Polish) and on The Modern Proper, Once Upon a
+Chef and The Daily Meal (English).
+
+**Known limitations**
+
+- Only JSON-LD is read. Several popular Polish blogs (for example Kwestia Smaku, Moje Wypieki, Ania
+  Gotuje) publish the recipe as schema.org *Microdata* instead, and some blogs have no recipe markup
+  at all; both end in `no_recipe_data` until the AI import (Step 4). Some sites (for example
+  przepisy.pl) refuse automated clients with `403`; this is reported, never circumvented.
+- Section headings inside ingredient lists ("Ciasto:") are dropped, but headings merged into step
+  text are kept as the site wrote them.
+- A host name is resolved with the operating system's resolver, which has no timeout of its own
+  (the 15 s budget applies from the first connection).
 
 ## Database schema
 
