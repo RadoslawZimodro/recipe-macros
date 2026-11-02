@@ -32,6 +32,14 @@ class AIIngredient(BaseModel):
     protein_per_100g: float | None = Field(description="estimated protein g per 100 g")
     fat_per_100g: float | None = Field(description="estimated fat g per 100 g")
     carbs_per_100g: float | None = Field(description="estimated carbohydrates g per 100 g")
+    density_g_per_ml: float | None = Field(
+        description="grams per millilitre of the product (water 1.0, flour 0.53, honey 1.4); "
+        "null if unknown or meaningless (an egg)"
+    )
+    grams_per_unit: float | None = Field(
+        description="only when the unit is piece, clove, slice or pinch: the typical weight in "
+        "grams of ONE such unit of the product (an egg 55, a clove of garlic 5); otherwise null"
+    )
 
 
 class AIRefinement(BaseModel):

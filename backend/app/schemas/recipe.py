@@ -59,6 +59,17 @@ class IngredientLineIn(BaseModel):
     ] = None
     ingredient_id: int | None = Field(None, ge=1)
     is_optional: bool = False
+    # A weight typed in by the user; it replaces the computed weight of this line.
+    grams: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
+
+
+class LinePatch(BaseModel):
+    """Correct one ingredient line. Send only what changes; null clears the value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    grams: Decimal | None = Field(None, ge=0, max_digits=10, decimal_places=2)
+    ingredient_id: int | None = Field(None, ge=1)
 
 
 class RecipeIn(BaseModel):
@@ -97,6 +108,7 @@ class IngredientLineOut(BaseModel):
     quantity: float | None
     unit: str | None
     is_optional: bool
+    grams: float | None  # the manually entered weight, if any
     ingredient_id: int | None
     ingredient_name: str | None
 

@@ -1,4 +1,11 @@
-from app.models.recipe import Ingredient, Recipe, RecipeIngredient, RecipeStep, Unit
+from app.models.recipe import (
+    Ingredient,
+    Recipe,
+    RecipeIngredient,
+    RecipeStep,
+    Unit,
+    UnitConversion,
+)
 from app.models.user import RefreshToken, User
 
 __all__ = [
@@ -8,5 +15,6 @@ __all__ = [
     "RecipeStep",
     "RefreshToken",
     "Unit",
+    "UnitConversion",
     "User",
 ]

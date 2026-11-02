@@ -3,9 +3,10 @@
 -- If the user already has a product with this name (a parallel import got there first), nothing
 -- is inserted and no row is returned.
 INSERT INTO ingredients (
-    user_id, canonical_name, kcal_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g, source
+    user_id, canonical_name, kcal_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g,
+    density_g_per_ml, source
 )
-VALUES (:user_id, :name, :kcal, :protein, :fat, :carbs, 'llm_estimate')
+VALUES (:user_id, :name, :kcal, :protein, :fat, :carbs, :density, 'llm_estimate')
 ON CONFLICT (user_id, lower(canonical_name)) WHERE user_id IS NOT NULL
 DO NOTHING
 RETURNING id

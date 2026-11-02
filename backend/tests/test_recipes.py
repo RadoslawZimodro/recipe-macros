@@ -50,6 +50,7 @@ def test_create_returns_full_recipe_with_ordered_children(alice):
         "quantity": 200.0,
         "unit": "g",
         "is_optional": False,
+        "grams": None,
         "ingredient_id": None,
         "ingredient_name": None,
     }

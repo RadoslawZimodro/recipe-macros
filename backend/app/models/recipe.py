@@ -30,10 +30,19 @@ class Unit(Base):
     """Dictionary of units a recipe line can use. Seeded by migration, read-only for the API."""
 
     __tablename__ = "units"
-    __table_args__ = (CheckConstraint("kind IN ('mass', 'volume', 'count')", name="kind"),)
+    __table_args__ = (
+        CheckConstraint("kind IN ('mass', 'volume', 'count')", name="kind"),
+        CheckConstraint(
+            "(kind = 'count') = (base_amount IS NULL) AND (base_amount IS NULL OR base_amount > 0)",
+            name="base_amount",
+        ),
+    )
 
     code: Mapped[str] = mapped_column(Text, primary_key=True)
     kind: Mapped[str] = mapped_column(Text)
+    # Grams (mass units) or millilitres (volume units) in one unit; NULL for count units, whose
+    # weight depends on the product (see UnitConversion).
+    base_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
 
 
 class Ingredient(Base):
@@ -182,7 +191,7 @@ class RecipeIngredient(Base):
         CheckConstraint("btrim(raw_text) <> ''", name="raw_text_not_blank"),
         CheckConstraint("quantity IS NULL OR quantity >= 0", name="quantity_non_negative"),
         CheckConstraint(
-            "grams_estimated IS NULL OR grams_estimated >= 0", name="grams_non_negative"
+            "grams_manual IS NULL OR grams_manual >= 0", name="grams_manual_non_negative"
         ),
     )
 
@@ -196,5 +205,52 @@ class RecipeIngredient(Base):
     raw_text: Mapped[str] = mapped_column(Text)
     quantity: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
     unit_code: Mapped[str | None] = mapped_column(ForeignKey("units.code"))
-    grams_estimated: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # A weight the user typed in for this line; replaces any computed weight.
+    grams_manual: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     is_optional: Mapped[bool] = mapped_column(server_default=false())
+
+
+class UnitConversion(Base):
+    """Grams per ONE unit of a product (an egg: 55 g), the density of a product (unit 'ml':
+    grams per millilitre) or a general default (ingredient_id NULL, e.g. a pinch).
+    user_id NULL = shared, otherwise the user's own estimate or correction."""
+
+    __tablename__ = "unit_conversions"
+    __table_args__ = (
+        CheckConstraint("grams_per_unit > 0", name="grams_positive"),
+        CheckConstraint("source IN ('off', 'manual', 'llm_estimate')", name="source"),
+        CheckConstraint("user_id IS NULL OR ingredient_id IS NOT NULL", name="own_has_product"),
+    )
+
+    id: Mapped[int] = mapped_column(Identity(), primary_key=True)
+    ingredient_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ingredients.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    unit_code: Mapped[str] = mapped_column(ForeignKey("units.code"))
+    grams_per_unit: Mapped[Decimal] = mapped_column(Numeric(10, 4))
+    source: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+Index(
+    "uq_unit_conversions_general",
+    UnitConversion.unit_code,
+    unique=True,
+    postgresql_where=UnitConversion.ingredient_id.is_(None),
+)
+Index(
+    "uq_unit_conversions_shared",
+    UnitConversion.ingredient_id,
+    UnitConversion.unit_code,
+    unique=True,
+    postgresql_where=UnitConversion.ingredient_id.is_not(None) & UnitConversion.user_id.is_(None),
+)
+Index(
+    "uq_unit_conversions_user",
+    UnitConversion.user_id,
+    UnitConversion.ingredient_id,
+    UnitConversion.unit_code,
+    unique=True,
+    postgresql_where=UnitConversion.user_id.is_not(None),
+)

@@ -33,6 +33,7 @@ SELECT
                 'quantity', i.quantity,
                 'unit', i.unit_code,
                 'is_optional', i.is_optional,
+                'grams', i.grams_manual,
                 'ingredient_id', i.ingredient_id,
                 'ingredient_name', g.canonical_name
             )

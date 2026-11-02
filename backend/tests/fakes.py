@@ -31,6 +31,8 @@ def ing(
     product=None,
     macros=(100.0, 5.0, 3.0, 15.0),
     optional=False,
+    density=None,
+    per_unit=None,
 ):
     """One AIIngredient. `macros` = (kcal, protein, fat, carbs) per 100 g; None for no estimate."""
     kcal, protein, fat, carbs = macros if macros else (None,) * 4
@@ -45,6 +47,8 @@ def ing(
         protein_per_100g=protein,
         fat_per_100g=fat,
         carbs_per_100g=carbs,
+        density_g_per_ml=density,
+        grams_per_unit=per_unit,
     )
 
 
@@ -76,9 +80,11 @@ def pl_flat_refinement(**overrides) -> AIRefinement:
             ing(0, qty=300, unit="g", product="mąka pszenna", macros=(364, 10.3, 1.0, 76.3)),
             ing(1, qty=200, unit="g", product="masło", macros=(717, 0.9, 81.0, 0.1)),
             ing(2, qty=100, unit="g", product="cukier puder", macros=(400, 0.0, 0.0, 100.0)),
-            ing(3, qty=1, unit="piece", product="jajko", macros=(143, 12.6, 9.5, 0.7)),
+            ing(3, qty=1, unit="piece", product="jajko", macros=(143, 12.6, 9.5, 0.7), per_unit=55),
             ing(4, qty=1, unit="kg", product="jabłko", macros=(52, 0.3, 0.2, 14.0)),
-            ing(5, qty=2, unit="tbsp", product="cynamon", macros=(247, 4.0, 1.2, 80.0)),
+            ing(
+                5, qty=2, unit="tbsp", product="cynamon", macros=(247, 4.0, 1.2, 80.0), density=0.56
+            ),
             ing(6, qty=1, unit="pinch", product="sól", macros=(0, 0, 0, 0)),
         ],
     }

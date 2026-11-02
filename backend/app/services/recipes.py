@@ -5,12 +5,12 @@ bound (get_current_user), so queries only ever see the current user's rows.
 """
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Recipe, RecipeIngredient, RecipeStep
-from app.schemas.recipe import RecipeIn, RecipeListOut, RecipeOut, RecipeSummary
+from app.schemas.recipe import LinePatch, RecipeIn, RecipeListOut, RecipeOut, RecipeSummary
 from app.services.sql import like_pattern, load_sql
 
 _SOURCE_URL_INDEX = "uq_recipes_user_source_url"
@@ -67,6 +67,7 @@ def build_children(
             quantity=line.quantity,
             unit_code=line.unit,
             is_optional=line.is_optional,
+            grams_manual=line.grams,
         )
         for pos, line in enumerate(payload.ingredients, start=1)
     ]
@@ -129,6 +130,41 @@ def delete_recipe(session: Session, recipe_id: int) -> None:
     )
     if result.first() is None:
         raise _not_found()
+    session.commit()
+
+
+def patch_line(session: Session, recipe_id: int, line_id: int, patch: LinePatch) -> None:
+    """Correct one ingredient line: its manual weight and/or its linked product."""
+    if not patch.model_fields_set:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Send at least one of: grams, ingredient_id"
+        )
+    line = session.scalar(
+        select(RecipeIngredient)
+        .join(Recipe, Recipe.id == RecipeIngredient.recipe_id)
+        .where(
+            RecipeIngredient.id == line_id,
+            RecipeIngredient.recipe_id == recipe_id,
+            Recipe.deleted_at.is_(None),
+        )
+    )
+    if line is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ingredient line not found")
+
+    if "ingredient_id" in patch.model_fields_set and patch.ingredient_id is not None:
+        # a foreign key does not see Row-Level Security: check visibility explicitly
+        visible = set(
+            session.scalars(load_sql("visible_ingredient_ids.sql"), {"ids": [patch.ingredient_id]})
+        )
+        if patch.ingredient_id not in visible:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Unknown ingredient id(s): {patch.ingredient_id}",
+            )
+    if "grams" in patch.model_fields_set:
+        line.grams_manual = patch.grams
+    if "ingredient_id" in patch.model_fields_set:
+        line.ingredient_id = patch.ingredient_id
     session.commit()
 
 

@@ -473,3 +473,100 @@ def test_the_default_dependency_without_a_key_reports_the_ai_as_unavailable(alic
 
     assert response.status_code == 201
     assert response.json()["ai_used"] is False and "not configured" in response.json()["notice"]
+
+
+# --- from the import to the numbers ---
+def test_an_ai_imported_recipe_has_its_macros_worked_out_and_labelled_as_a_guess(alice, web):
+    use_ai(FakeLLM(pl_flat_refinement()))
+    recipe_id = do_import(alice).json()["recipe"]["id"]
+
+    result = alice.get(f"/recipes/{recipe_id}/nutrition").json()
+
+    # 300 g flour 364 kcal/100 g -> 1092; 200 g butter -> 1434; 100 g icing sugar -> 400;
+    # 1 egg = 55 g -> 78.65; 1 kg apples -> 520; 2 tbsp cinnamon = 30 ml x 0.56 = 16.8 g -> 41.496;
+    # a pinch of salt = 0.5 g -> 0.   Sum 3566.146
+    assert result["total"]["kcal"] == pytest.approx(3566.1, abs=0.06)
+    assert result["servings"] == 8
+    assert result["per_serving"]["kcal"] == pytest.approx(3566.146 / 8, abs=0.06)  # 445.8
+    assert result["coverage"] == {"lines_total": 7, "lines_counted": 7, "percent": 100.0}
+    assert result["missing"] == []
+    # everything rests on the AI's estimates, and the answer says so
+    assert result["is_estimate"] is True and result["measured_share"] == 0.0
+    assert all(item["is_estimate"] for item in result["lines"])
+    weights = {item["position"]: item["weight_source"] for item in result["lines"]}
+    assert weights == {
+        1: "unit",
+        2: "unit",
+        3: "unit",
+        4: "unit_weight",
+        5: "unit",
+        6: "density",
+        7: "default",
+    }
+
+
+def test_the_ai_estimates_of_weights_are_stored_as_the_users_own_conversions(alice, web, admin_db):
+    use_ai(FakeLLM(pl_flat_refinement()))
+
+    do_import(alice)
+
+    rows = admin_db.execute(
+        text(
+            "SELECT i.canonical_name, c.unit_code, c.grams_per_unit, c.user_id, c.source "
+            "FROM unit_conversions c JOIN ingredients i ON i.id = c.ingredient_id ORDER BY 1"
+        )
+    ).all()
+    assert [(r[0], r[1], float(r[2]), r[3], r[4]) for r in rows] == [
+        ("jajko", "piece", 55.0, alice.user_id, "llm_estimate"),
+    ]  # cinnamon's density sits in the product row; nothing is written to shared data
+    cinnamon = admin_db.execute(
+        text("SELECT density_g_per_ml FROM ingredients WHERE canonical_name = 'cynamon'")
+    ).scalar_one()
+    assert float(cinnamon) == 0.56
+
+
+def test_old_recipes_improve_by_themselves_when_measured_data_arrives(alice, web, admin_db):
+    use_ai(FakeLLM(pl_flat_refinement()))
+    recipe_id = do_import(alice).json()["recipe"]["id"]
+    before = alice.get(f"/recipes/{recipe_id}/nutrition").json()
+    butter_before = next(i for i in before["lines"] if i["raw_text"] == "200 g zimnego masła")
+    assert butter_before["product"]["source"] == "llm_estimate"
+
+    # the shared catalog gets measured butter with different numbers (82 g fat, 745 kcal)
+    admin_db.execute(
+        text(
+            "INSERT INTO ingredients (user_id, canonical_name, kcal_per_100g, protein_per_100g, "
+            "fat_per_100g, carbs_per_100g, source) VALUES (NULL, 'masło', 745, 0.7, 82, 0.6, 'off')"
+        )
+    )
+    admin_db.commit()
+
+    after = alice.get(f"/recipes/{recipe_id}/nutrition").json()
+    butter = next(i for i in after["lines"] if i["raw_text"] == "200 g zimnego masła")
+    assert butter["product"]["source"] == "off" and butter["nutrition"]["kcal"] == 1490.0  # 745 x 2
+    assert butter["is_estimate"] is False
+    assert after["measured_share"] == pytest.approx(1490 / after["total"]["kcal"], abs=0.001)
+    assert after["measured_share"] > 0.3
+
+
+def test_a_new_import_links_to_the_measured_product_not_to_the_old_estimate(alice, web, admin_db):
+    use_ai(FakeLLM(pl_flat_refinement()))
+    do_import(alice)  # creates Alice's private estimate of "masło"
+    admin_db.execute(
+        text(
+            "INSERT INTO ingredients (user_id, canonical_name, kcal_per_100g, protein_per_100g, "
+            "fat_per_100g, carbs_per_100g, source) VALUES (NULL, 'masło', 745, 0.7, 82, 0.6, 'off')"
+        )
+    )
+    admin_db.commit()
+    web.pages[URL + "-2"] = PL_FLAT
+    app.dependency_overrides[get_recipe_ai] = lambda: RecipeAI(
+        FakeLLM(pl_flat_refinement(steps=["Inne kroki."])), get_redis()
+    )
+
+    second = do_import(alice, url=URL + "-2").json()["recipe"]
+
+    shared_id = admin_db.execute(
+        text("SELECT id FROM ingredients WHERE user_id IS NULL AND canonical_name = 'masło'")
+    ).scalar_one()
+    assert second["ingredients"][1]["ingredient_id"] == shared_id

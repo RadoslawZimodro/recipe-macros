@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from app.schemas.ai import AIFullRecipe, AIIngredient, AIRefinement
 from app.schemas.recipe import IngredientLineIn, RecipeIn, StepIn
 from app.services.ai_extract import MAX_STEPS, AIInvalidOutput
-from app.services.products import ProductCandidate, normalize_name
+from app.services.products import COUNT_UNITS, ProductCandidate, normalize_name
 from app.services.recipe_extractor import ExtractedRecipe
 
 METHOD = "llm"  # stored as import_method: the content was produced with AI's help
@@ -28,6 +28,12 @@ def product_candidates(ai: AIRefinement) -> list[ProductCandidate]:
             protein=item.protein_per_100g,
             fat=item.fat_per_100g,
             carbs=item.carbs_per_100g,
+            density=item.density_g_per_ml,
+            unit_weights=(
+                ((item.unit, item.grams_per_unit),)
+                if item.unit in COUNT_UNITS and item.grams_per_unit
+                else ()
+            ),
         )
         for item in ai.ingredients
         if item.product_name

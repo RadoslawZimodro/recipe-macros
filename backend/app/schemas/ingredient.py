@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
 class IngredientIn(BaseModel):
@@ -17,6 +17,32 @@ class IngredientIn(BaseModel):
     fat_per_100g: Decimal = Field(ge=0, le=100, max_digits=5, decimal_places=2)
     carbs_per_100g: Decimal = Field(ge=0, le=100, max_digits=5, decimal_places=2)
     density_g_per_ml: Decimal | None = Field(None, gt=0, max_digits=6, decimal_places=3)
+
+
+class IngredientPatch(BaseModel):
+    """Correct one of your own products. Send only what changes; the result is marked as typed in
+    by you (source = manual). density_g_per_ml may be null to clear it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    canonical_name: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+        | None
+    ) = None
+    kcal_per_100g: Decimal | None = Field(None, ge=0, le=900, max_digits=7, decimal_places=2)
+    protein_per_100g: Decimal | None = Field(None, ge=0, le=100, max_digits=5, decimal_places=2)
+    fat_per_100g: Decimal | None = Field(None, ge=0, le=100, max_digits=5, decimal_places=2)
+    carbs_per_100g: Decimal | None = Field(None, ge=0, le=100, max_digits=5, decimal_places=2)
+    density_g_per_ml: Decimal | None = Field(None, gt=0, max_digits=6, decimal_places=3)
+
+    @model_validator(mode="after")
+    def _only_density_may_be_cleared(self) -> "IngredientPatch":
+        for name in self.model_fields_set - {"density_g_per_ml"}:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        if not self.model_fields_set:
+            raise ValueError("send at least one field to change")
+        return self
 
 
 class IngredientOut(BaseModel):

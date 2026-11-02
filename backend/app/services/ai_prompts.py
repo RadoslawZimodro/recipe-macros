@@ -6,7 +6,7 @@ import json
 
 from app.schemas.ai import AI_UNIT_CODES
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
 SYSTEM_PROMPT = f"""\
 You turn recipe data into a clean, structured recipe for a nutrition-tracking app.
@@ -37,6 +37,11 @@ Rules for every ingredient line (one entry per line, keep the line numbers):
 - kcal_per_100g, protein_per_100g, fat_per_100g, carbs_per_100g: your best estimate for the
   product as it is usually sold (raw, unless the name says otherwise). These are estimates;
   use null only if you cannot even estimate.
+- density_g_per_ml: grams per millilitre of the product (water 1.0, milk 1.03, flour 0.53,
+  sugar 0.85, honey 1.4, oil 0.92). Null for solid items that are not measured by volume (an egg).
+- grams_per_unit: only when the unit is piece, clove, slice or pinch. The typical weight in grams
+  of ONE such unit of the product: an egg 55, a medium onion 110, a clove of garlic 5, a slice of
+  bread 30, a medium carrot 70. Null for every other unit.
 - Never invent ingredients and never merge or drop lines.
 
 Rules for steps: keep the source wording and language and the original order. Return only real
