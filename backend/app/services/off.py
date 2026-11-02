@@ -28,7 +28,9 @@ SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
 MIN_PRODUCTS = 5  # fewer matching products than this and the median means little
 KJ_PER_KCAL = 4.184
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
-RETRY_PAUSES = (15.0, 30.0, 60.0)  # seconds to wait before the 1st, 2nd and 3rd retry
+# Seconds before the 1st, 2nd and 3rd retry. OFF's 503s are brief and random (a busy node),
+# so short pauses work; a longer outage is handled by the circuit breaker in off_import.
+RETRY_PAUSES = (3.0, 8.0, 20.0)
 
 
 class OffError(Exception):

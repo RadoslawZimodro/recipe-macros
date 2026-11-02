@@ -10,6 +10,7 @@ from app.db import engine as app_engine
 from app.services.off import (
     DATA_FILE,
     MIN_PRODUCTS,
+    RETRY_PAUSES,
     Entry,
     OffClient,
     OffError,
@@ -251,7 +252,7 @@ def test_a_busy_server_is_retried_with_growing_pauses():
     result = make_client(handler, sleeps=sleeps).search("mąka")
 
     assert len(parse_products(result)) == 5 and len(calls) == 3
-    assert sleeps == [15.0, 30.0]  # no pause before the first request
+    assert sleeps == list(RETRY_PAUSES[:2])  # no pause before the first request
 
 
 def test_it_gives_up_after_three_retries():
@@ -412,3 +413,46 @@ def test_a_recipe_is_computed_from_the_imported_catalog(alice, owner_engine, adm
     # 3 x 55 g = 165 g; 140 kcal/100 g -> 231 kcal. Measured data: nothing is an AI guess.
     assert result["total"]["kcal"] == 231.0 and result["measured_share"] == 1.0
     assert result["lines"][0]["is_estimate"] is False
+
+
+# --- when Open Food Facts itself keeps failing ---
+def test_the_import_stops_early_when_off_keeps_failing(owner_engine, admin_db):
+    entries = [entry(f"produkt {i}", query=f"produkt{i}") for i in range(10)]
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.params["search_terms"])
+        return httpx2.Response(404)  # fails at once, no retry pauses
+
+    seen = []
+    outcomes = import_catalog(owner_engine, entries, make_client(handler), on_outcome=seen.append)
+
+    assert [o.status for o in outcomes] == ["failed"] * 4 + ["aborted"] * 6
+    assert len(calls) == 4  # the remaining six were not even requested
+    assert seen == outcomes  # every outcome was reported as it happened
+    assert shared_rows(admin_db) == []
+
+
+def test_one_success_resets_the_failure_count(owner_engine, admin_db):
+    entries = [entry(f"mąka {i}", query="mąka pszenna") for i in range(9)]
+    answers = iter([404, 404, 404, "ok", 404, 404, 404, "ok", "ok"])
+
+    def handler(request):
+        answer = next(answers)
+        if answer == "ok":
+            return httpx2.Response(200, json=payload(*FLOURS))
+        return httpx2.Response(answer)
+
+    outcomes = import_catalog(owner_engine, entries, make_client(handler))
+
+    assert "aborted" not in [o.status for o in outcomes]  # never 4 failures in a row
+    assert [o.status for o in outcomes].count("failed") == 6
+
+
+def test_a_database_error_does_not_count_against_off(owner_engine, admin_db):
+    entries = [entry(f"mąka {i}", query="mąka pszenna") for i in range(6)]
+    client = make_client(lambda request: httpx2.Response(200, json=payload(*FLOURS)))
+
+    outcomes = import_catalog(app_engine, entries, client)  # the restricted role cannot write
+
+    assert [o.status for o in outcomes] == ["failed"] * 6  # none aborted: OFF answered every time
