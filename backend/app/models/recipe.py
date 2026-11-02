@@ -97,7 +97,9 @@ class Recipe(Base):
             "AND (cook_time_min IS NULL OR cook_time_min >= 0)",
             name="times_non_negative",
         ),
-        CheckConstraint("import_method IN ('jsonld', 'llm', 'manual')", name="import_method"),
+        CheckConstraint(
+            "import_method IN ('jsonld', 'microdata', 'llm', 'manual')", name="import_method"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Identity(), primary_key=True)
