@@ -1,9 +1,18 @@
-"""Import a recipe from a link: normalize, look up, fetch, extract, save.
+"""Import a recipe from a link: normalize, look up, fetch, read, (AI), save.
 
 Flow: the address is normalized; if the user already has that recipe it is returned as is
-(no network). Otherwise the per-user import budget is checked, the page is fetched through
-the SSRF-safe fetcher, the schema.org recipe is extracted from its JSON-LD or Microdata and
-saved with a single `INSERT ... ON CONFLICT DO UPDATE` (app/sql/upsert_imported_recipe.sql).
+(no network). Otherwise the per-user import budget is checked and the page is fetched through the
+SSRF-safe fetcher. Then:
+
+  * the page has structured data (JSON-LD / Microdata): the AI takes the ingredient lines apart
+    and tidies the steps, the rest comes from the markup;
+  * the page has none: the AI reads the page text and fills the whole recipe;
+  * the AI is unavailable (no key, no credit, outage, daily limit): a page WITH markup is still
+    saved, in its basic form (ingredients as plain text), and the answer says so;
+    a page without markup cannot be imported.
+
+The recipe is saved with a single `INSERT ... ON CONFLICT DO UPDATE`
+(app/sql/upsert_imported_recipe.sql). AI-made content is stored with import_method = 'llm'.
 """
 
 import json
@@ -18,18 +27,23 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import RecipeIngredient, RecipeStep
 from app.schemas.recipe import RecipeOut
+from app.services import ai_merge
+from app.services.ai_client import AIUnavailable
+from app.services.ai_extract import AIInvalidOutput, NoRecipeOnPage, RecipeAI
 from app.services.limits import RateLimitExceeded, check_rate_limit
 from app.services.page_fetcher import PageFetcher
+from app.services.page_text import page_content
+from app.services.products import resolve_products
 from app.services.recipe_extractor import ExtractedRecipe, extract_recipe
 from app.services.recipes import build_children, get_recipe
-from app.services.safe_fetch import FetchError
+from app.services.safe_fetch import FetchedPage, FetchError
 from app.services.sql import load_sql
 from app.services.urls import UrlError, normalize_url
 
 logger = logging.getLogger(__name__)
 
 # HTTP status per error code. 422: this address cannot be imported (the user can pick another);
-# 5xx: the other site or our infrastructure is the problem and a retry may help.
+# 5xx: the other site, the AI service or our infrastructure is the problem and a retry may help.
 STATUS_BY_CODE = {
     "invalid_url": 422,
     "unsupported_site": 422,
@@ -45,8 +59,10 @@ STATUS_BY_CODE = {
     "rate_limited": 429,
     "upstream_error": 502,
     "robots_unavailable": 502,
+    "ai_invalid_output": 502,
     "timeout": 504,
     "service_unavailable": 503,
+    "ai_unavailable": 503,
 }
 
 
@@ -68,6 +84,8 @@ class ImportFailed(Exception):
 class ImportResult:
     recipe: RecipeOut
     status: str  # "created" | "existing" | "refreshed"
+    ai_used: bool = False
+    notice: str | None = None  # e.g. "AI unavailable, saved the basic version"
 
 
 def _enforce_rate_limit(redis: Redis, user_id: int) -> None:
@@ -117,10 +135,52 @@ def _save(session: Session, user_id: int, extracted: ExtractedRecipe) -> tuple[i
     return row.id, row.inserted
 
 
+def _with_ai(
+    session: Session,
+    ai: RecipeAI,
+    user_id: int,
+    page: FetchedPage,
+    extracted: ExtractedRecipe | None,
+    source_url: str,
+) -> ExtractedRecipe:
+    """The recipe as the AI shapes it. May raise AIUnavailable (the caller can fall back) or
+    ImportFailed (the page has no recipe, or the AI gave nothing usable)."""
+    try:
+        if extracted is not None:
+            recipe = extracted.recipe
+            result = ai.refine(
+                user_id,
+                [line.raw_text for line in recipe.ingredients],
+                [step.instruction for step in recipe.steps],
+            )
+            ids = resolve_products(session, user_id, ai_merge.product_candidates(result))
+            return ai_merge.merge_refinement(extracted, result, ids)
+
+        content = page_content(
+            page.body, base_url=page.final_url, limit=get_settings().ai_max_page_chars
+        )
+        if content.truncated:
+            logger.info("ai_page_text_truncated url=%s", source_url)
+        full = ai.extract_page(user_id, content.text, page.final_url)
+        ids = resolve_products(session, user_id, ai_merge.product_candidates(full))
+        return ai_merge.recipe_from_page(
+            full, source_url=source_url, image_url=content.image_url, product_ids=ids
+        )
+    except NoRecipeOnPage:
+        raise ImportFailed("no_recipe_data", "No recipe was found on this page.") from None
+    except AIInvalidOutput as exc:
+        logger.error("ai_import_failed reason=%s", exc)
+        raise ImportFailed(
+            "ai_invalid_output",
+            "The AI could not turn this page into a usable recipe. Try again later.",
+        ) from None
+
+
 def import_recipe(
     session: Session,
     redis: Redis,
     fetcher: PageFetcher,
+    ai: RecipeAI,
     user_id: int,
     raw_url: str,
     *,
@@ -139,8 +199,8 @@ def import_recipe(
 
     _enforce_rate_limit(redis, user_id)
 
-    # End the transaction before the slow part: a database connection must not be held
-    # while we wait for another server (up to the fetch time budget).
+    # End the transaction before the slow parts: a database connection must not be held while
+    # we wait for another server or for the AI.
     session.commit()
     try:
         page = fetcher.fetch(source_url, refresh=refresh)
@@ -148,12 +208,33 @@ def import_recipe(
         raise ImportFailed(exc.code, exc.message) from None
 
     extracted = extract_recipe(page.body, base_url=page.final_url, source_url=source_url)
-    if extracted is None:
-        raise ImportFailed(
-            "no_recipe_data",
-            "No structured recipe data (JSON-LD or Microdata) was found on this page. Import of "
-            "pages without it is not available yet.",
-        )
 
-    recipe_id, inserted = _save(session, user_id, extracted)
-    return ImportResult(get_recipe(session, recipe_id), "created" if inserted else "refreshed")
+    notice = None
+    ai_used = True
+    try:
+        final = _with_ai(session, ai, user_id, page, extracted, source_url)
+    except AIUnavailable as exc:
+        ai_used = False
+        if extracted is None:
+            if exc.code == "ai_not_configured":
+                raise ImportFailed(
+                    "no_recipe_data",
+                    "No structured recipe data (JSON-LD or Microdata) was found on this page, "
+                    f"and AI import is not available: {exc.message}",
+                ) from None
+            raise ImportFailed(
+                "ai_unavailable",
+                f"{exc.message} This page has no structured data, so it cannot be imported "
+                "without AI.",
+            ) from None
+        final = extracted
+        notice = f"{exc.message} The basic version was saved (ingredients as plain text)."
+        logger.warning("ai_unavailable_fallback code=%s", exc.code)
+
+    recipe_id, inserted = _save(session, user_id, final)
+    return ImportResult(
+        get_recipe(session, recipe_id),
+        "created" if inserted else "refreshed",
+        ai_used=ai_used,
+        notice=notice,
+    )
