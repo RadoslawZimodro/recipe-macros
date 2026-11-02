@@ -144,12 +144,18 @@ def _steps(value: Any) -> list[StepIn]:
     return [StepIn(instruction=s) for s in steps[:MAX_STEPS]]
 
 
+def _is_section_header(line: str) -> bool:
+    """'Ciasto:' or 'Składniki na sos:' groups the lines below it; it is not an ingredient."""
+    return line.endswith(":") and len(line) <= 60 and not any(ch.isdigit() for ch in line)
+
+
 def _ingredients(node: dict) -> list[IngredientLineIn]:
     raw = node.get("recipeIngredient")
     if raw is None:
         raw = node.get("ingredients")  # legacy property name
     items = raw if isinstance(raw, list) else [raw]
     lines = [text for item in items if (text := _one_line(item))]
+    lines = [line for line in lines if not _is_section_header(line)]
     return [IngredientLineIn(raw_text=line[:500]) for line in lines[:MAX_INGREDIENTS]]
 
 

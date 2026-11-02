@@ -326,6 +326,26 @@ def test_overlong_step_and_ingredient_are_truncated():
     assert len(r.steps[0].instruction) == 5000 and len(r.ingredients[0].raw_text) == 500
 
 
+def test_section_headers_are_not_ingredients():
+    node = recipe(
+        recipeIngredient=[
+            "Ciasto:",
+            "200 g zimnego masła",
+            "Składniki na krem:",
+            "2 jajka",
+            "Przyprawy: sól i pieprz",  # has content after the colon: a real line
+            "Skład 2 x 100 g:",  # contains digits: keep
+        ]
+    )
+
+    assert [i.raw_text for i in extract(page(node)).recipe.ingredients] == [
+        "200 g zimnego masła",
+        "2 jajka",
+        "Przyprawy: sól i pieprz",
+        "Skład 2 x 100 g:",
+    ]
+
+
 def test_legacy_ingredients_property_and_single_string():
     node = recipe(ingredients=["1 jajko", "sól"])
     assert [i.raw_text for i in extract(page(node)).recipe.ingredients] == ["1 jajko", "sól"]
