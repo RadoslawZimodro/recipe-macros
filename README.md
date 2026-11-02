@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 4 (import from a link, with AI). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 6 (macronutrients). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -101,10 +101,13 @@ Everything below needs a session; `POST`/`PUT`/`DELETE` also need the `X-CSRF-To
 | `GET /ingredients?q=` | Search products: the shared catalog plus your own |
 | `POST /ingredients` | Add a private product (nutrition per 100 g, `source` is always `manual`) |
 | `GET /units` | Allowed units for ingredient lines |
+| `PATCH /ingredients/{id}` | Correct one of your own products (macros, density, name); it becomes `source = manual` |
+| `GET /recipes/{id}/nutrition` | Macronutrients of a recipe, total and per serving, with coverage and sources (see "Macronutrients") |
+| `PATCH /recipes/{id}/ingredients/{line_id}` | Correct one ingredient line: type in its weight in grams and/or change its product |
 | `POST /recipes/import` | Import a recipe from a link (see below) |
 
 Other users' recipes return `404`, not `403`, so their existence is not revealed.
-Nutrition values are estimates and carry a `source` (`off`, `manual`, `llm_estimate`).
+Nutrition values are estimates and carry a `source` (`usda`, `manual`, `llm_estimate`).
 
 ## Import from a link
 
@@ -237,13 +240,129 @@ Modern Proper, Once Upon a Chef and The Daily Meal in English.
   `403`; this is reported, never circumvented.
 - AI output is an estimate. Nutrition values are the model's guess for a typical product (always
   `source = llm_estimate`), quantities of "to taste" lines stay empty, and a unit that is not in the
-  dictionary is converted to metric or left empty. `cup` is 240 ml for US recipes, while a Polish
-  "szklanka" is 250 ml; the exact conversion arrives with the nutrition step.
+  dictionary is converted to metric or left empty. A cup is 250 ml everywhere (see "Macronutrients").
 - Text a site gets wrong stays wrong: a typo in a site's own steps is copied faithfully.
-- The shared product catalog is still empty, so almost every product starts as a private estimate;
-  the Open Food Facts import (Step 6) fills it with measured data.
+- A product the shared catalog does not know starts as a private AI estimate. The shared catalog is
+  filled from the USDA data (see "Macronutrients"); recipes pick up the measured product by themselves.
 - A host name is resolved with the operating system's resolver, which has no timeout of its own
   (the 15 s budget applies from the first connection).
+
+## Macronutrients
+
+`GET /recipes/{id}/nutrition?include_optional=false` returns the calories, protein, fat and
+carbohydrates of a recipe, in total and per serving. **It is always an estimate** (`"is_estimate":
+true`), and the answer says how good the estimate is instead of pretending to precision:
+
+```json
+{
+  "recipe_id": 12, "servings": 4, "is_estimate": true,
+  "total":       {"kcal": 3171.3, "protein": 47.1, "fat": 216.0, "carbs": 265.0},
+  "per_serving": {"kcal": 792.8,  "protein": 11.8, "fat": 54.0,  "carbs": 66.3},
+  "coverage": {"lines_total": 8, "lines_counted": 5, "percent": 62.5},
+  "measured_share": 1.0,
+  "lines": [
+    {"raw_text": "2 łyżki miodu", "grams": 42.6, "weight_source": "density", "is_estimate": false,
+     "product": {"id": 3, "name": "miód", "source": "usda"},
+     "nutrition": {"kcal": 129.5, "protein": 0.1, "fat": 0.0, "carbs": 35.1}, "problem": null}
+  ],
+  "missing": [
+    {"raw_text": "1 szklanka mleka", "problem": "no_density",
+     "message": "the weight of a spoon or glass of this product is unknown (no density)"}
+  ]
+}
+```
+
+- `coverage`: how many lines could be computed. Lines that cannot be (no amount, no product, no
+  known weight of a spoon or a piece) are **listed in `missing` with the reason, never guessed**; the
+  total is "what we know". Optional lines are left out unless `include_optional=true`.
+- `measured_share`: the share of the calories that rests on data that is **not** an AI guess
+  (USDA or typed in by the user). Every line also says whether it is an estimate.
+- Per serving is the total divided by the number of servings. Weights are those of the raw
+  ingredients (cooking, evaporation and oil absorption are not modelled). Values are rounded to
+  0.1, with .x5 rounded up like on a nutrition label.
+
+**How a line gets its weight** (all in SQL, see below):
+
+| Unit | Weight |
+|---|---|
+| a weight typed in by the user (`grams` on the line) | exactly that, always first |
+| `g`, `kg` | amount x 1 or 1000 |
+| `ml`, `l`, `tsp` (5 ml), `tbsp` (15 ml), `cup` (250 ml) | ml x **density** of the product (honey is not flour) |
+| `piece`, `clove`, `slice`, `pinch` | amount x the **weight of one** such unit of the product (an egg 55 g, a clove 5 g); a pinch is 0.5 g by default |
+
+Densities and piece weights live in `ingredients.density_g_per_ml` and the `unit_conversions` table,
+with the same visibility rules as products (shared rows, or the user's own that win over them). A cup
+is 250 ml everywhere; for American recipes (240 ml) that is about 4% too much.
+
+**Where the numbers are worked out.** In the database, on every read, so a corrected product or a new
+catalog entry changes the result at once and nothing has to be refreshed. The view
+[`recipe_line_nutrition`](backend/migrations/versions/0006_nutrition_conversions_and_view.py) joins each
+ingredient line with its product and conversions, and a query sums it
+([`recipe_nutrition.sql`](backend/app/sql/recipe_nutrition.sql)):
+
+```sql
+SELECT count(*)                                                  AS lines_total,
+       count(*) FILTER (WHERE l.kcal IS NOT NULL)                AS lines_counted,
+       COALESCE(sum(l.kcal), 0)                                  AS kcal,
+       COALESCE(sum(l.kcal) FILTER (WHERE NOT l.is_estimate), 0) AS kcal_measured
+FROM recipe_line_nutrition l
+WHERE l.recipe_id = :recipe_id AND (:include_optional OR NOT l.is_optional);
+```
+
+The view is created `WITH (security_invoker = true)`. A normal view runs with the rights of its owner,
+which would bypass Row-Level Security and show every user's recipes; with `security_invoker` it runs
+as the caller, so RLS still applies (`tests/test_nutrition.py` checks this as the restricted role).
+
+**Which product is used.** For a line linked to a product, the view takes the best visible product with
+the same name: **the user's own manual entry first, then the shared (measured) one, then the user's
+own AI estimate.** An old AI guess therefore never hides measured data, and recipes imported earlier
+improve by themselves when the shared catalog grows. The same order is used when the AI names a
+product during an import.
+
+**Manual corrections** (nothing shared is ever modified):
+
+- `PATCH /recipes/{id}/ingredients/{line_id}` with `{"grams": 250}` and/or `{"ingredient_id": 7}`
+  (`null` clears the value). A typed-in weight survives when the client sends the recipe back with `PUT`.
+- `PATCH /ingredients/{id}` edits one of the user's own products; the result is marked `manual`.
+  Shared products answer `403` with a hint to add a product of the same name (which takes precedence).
+
+**Measured data from the USDA.** A recipe says "flour", not a brand, so the shared catalog is built from
+generic foods. The [USDA FoodData Central](https://fdc.nal.usda.gov) publishes laboratory measurements of
+generic foods: Foundation Foods (about 400 foods) and SR Legacy (about 7800 foods, with the weight of a
+cup or a piece). The script loads a **raw copy** into the `usda_*` staging tables and does not touch the
+shared catalog; the catalog receives only products mapped to our own names, in a separate step.
+
+```bash
+docker compose exec backend python -m app.scripts.import_usda   # downloads about 10 MB, takes seconds
+```
+
+It reads the CSV straight out of the ZIP files, writes with `COPY` and replaces the tables in one
+transaction (a failure keeps the old data, running it again is safe). USDA stores nutrients as one row per
+(food, nutrient); the view `usda_food_macros` turns that into one row per food. Energy comes from
+nutrient 1008, and when a food has none (most Foundation foods) from the Atwater factors 2047, then 2048.
+The Foundation release of 2026-10-29 is published without its main tables, so the last complete release
+(2025-12-18) is pinned. Some Foundation foods have no carbohydrate value (nutrient 1005) and stay `NULL`.
+The USDA data is in the public domain (CC0). USDA values are stored with `source = 'usda'` and shown as
+measured, not as an estimate.
+The database constraint still allows the older value `off` (rows imported earlier from Open Food Facts);
+no code writes it any more.
+
+**Filling the catalog from USDA.** The staging tables hold 8000 English names; the shared catalog should hold
+our own, Polish ones. [`usda_mapping.csv`](backend/app/data/usda_mapping.csv) says which USDA food stands for
+each ingredient of the starter list (a reviewable file, chosen by hand, not guessed at run time). The script
+writes the macros per 100 g of the mapped food as `source = 'usda'`, together with the densities and piece
+weights of the starter list (USDA has no density, and its portion weights differ per food). Rows that are
+already in the catalog are updated, not duplicated:
+
+```bash
+docker compose exec backend python -m app.scripts.import_usda_catalog --dry-run   # look first
+docker compose exec backend python -m app.scripts.import_usda_catalog             # write
+```
+
+Two ingredients have no USDA counterpart and are skipped (their rows, if any, stay as they are): *mąka
+ziemniaczana* (the Polish one is potato starch, USDA only has potato flour with different macros) and
+*twaróg* (USDA has cottage cheese and ricotta, which differ a lot). Carbohydrate is computed by difference
+in USDA and can come out slightly negative (-0.4); it is stored as 0.
 
 ## Database schema
 
@@ -256,6 +375,8 @@ erDiagram
     recipes ||--o{ recipe_ingredients : has
     ingredients |o--o{ recipe_ingredients : "linked by"
     units |o--o{ recipe_ingredients : "measured in"
+    ingredients ||--o{ unit_conversions : "weights of"
+    units ||--o{ unit_conversions : "for"
 
     users {
         int id PK
@@ -290,6 +411,7 @@ erDiagram
         text raw_text
         numeric quantity
         text unit_code FK "nullable"
+        numeric grams_manual "weight typed in by the user"
         bool is_optional
     }
     ingredients {
@@ -297,11 +419,21 @@ erDiagram
         int user_id FK "NULL = shared catalog"
         text canonical_name "unique per scope"
         numeric kcal_per_100g
-        text source "off | manual | llm_estimate"
+        numeric density_g_per_ml
+        text source "usda | manual | llm_estimate"
     }
     units {
         text code PK
         text kind "mass | volume | count"
+        numeric base_amount "g or ml in one unit; NULL for count"
+    }
+    unit_conversions {
+        int id PK
+        int ingredient_id FK "NULL = general default"
+        int user_id FK "NULL = shared; RLS"
+        text unit_code FK "ml = density, piece/clove/..."
+        numeric grams_per_unit
+        text source "usda | manual | llm_estimate"
     }
 ```
 
@@ -328,7 +460,15 @@ Design decisions:
   for old entries. The unique index on `(user_id, source_url)` is partial (`WHERE source_url IS NOT
   NULL AND deleted_at IS NULL`), so a deleted recipe can be imported again.
 - **Units dictionary** (`units`) with a foreign key instead of free text; an unrecognised unit is
-  `NULL` and the original wording stays in `raw_text`.
+  `NULL` and the original wording stays in `raw_text`. `base_amount` says how many grams or
+  millilitres a unit is; a `CHECK` ties it to the kind (count units have none).
+- **`unit_conversions`** holds the weight of one piece or spoon of a product, with the same
+  shared/own visibility as products (a user's row for a shared product overrides it for that user
+  only). Three partial unique indexes keep one value per scope.
+- **USDA staging tables** (`usda_food`, `usda_food_nutrient`, `usda_food_portion`,
+  `usda_measure_unit`) are a snapshot of the source data, owned by the database owner only: the
+  application role has no privileges on them. A trigram GIN index on `usda_food.description` is for
+  matching names later.
 - **`updated_at` is maintained by a trigger** (`WHEN OLD.* IS DISTINCT FROM NEW.*`), so it is right
   for any writer, including manual SQL.
 - **Writes through the ORM, reads as SQL files** in `backend/app/sql/`. The ORM does plain
@@ -364,9 +504,8 @@ LIMIT :limit OFFSET :offset;
 ```
 
 Known limitations: search does not fold Polish diacritics (a typo in an accented letter may or may
-not match through trigram similarity); the shared product catalog stays empty until the Open Food
-Facts import in Step 6, and manual correction of shared products is intentionally left out for now
-(users add their own private product instead).
+not match through trigram similarity). Shared products cannot be edited through the API; a user adds
+a product of their own with the same name instead, and it takes precedence.
 
 ## License
 

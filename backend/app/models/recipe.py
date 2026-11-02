@@ -59,7 +59,7 @@ class Ingredient(Base):
         CheckConstraint(
             "density_g_per_ml IS NULL OR density_g_per_ml > 0", name="density_positive"
         ),
-        CheckConstraint("source IN ('off', 'manual', 'llm_estimate')", name="source"),
+        CheckConstraint("source IN ('off', 'usda', 'manual', 'llm_estimate')", name="source"),
     )
 
     id: Mapped[int] = mapped_column(Identity(), primary_key=True)
@@ -218,7 +218,7 @@ class UnitConversion(Base):
     __tablename__ = "unit_conversions"
     __table_args__ = (
         CheckConstraint("grams_per_unit > 0", name="grams_positive"),
-        CheckConstraint("source IN ('off', 'manual', 'llm_estimate')", name="source"),
+        CheckConstraint("source IN ('off', 'usda', 'manual', 'llm_estimate')", name="source"),
         CheckConstraint("user_id IS NULL OR ingredient_id IS NOT NULL", name="own_has_product"),
     )
 
