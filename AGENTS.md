@@ -117,7 +117,7 @@ albo jako polecenia CLI (`python -m app.scripts.<nazwa>`).
 
 - `users`: id, email, password_hash, daily_kcal_goal, daily_protein_goal, created_at
 - `recipes`: id, user_id, title, source_url, servings, image_url, imported_at, import_method
-  (`jsonld` | `llm` | `manual`)
+  (`jsonld` | `microdata` | `llm` | `manual`)
 - `recipe_steps`: recipe_id, position, instruction
 - `ingredients`: katalog znormalizowanych składników (id, canonical_name, kcal/protein/fat/carbs
   na 100 g, density_g_per_ml NULL, source)
@@ -152,7 +152,7 @@ commit + push, zaznaczenie `[x]` poniżej.
   przez API (bez importu).
   Kryterium: CRUD przepisów, składników i kroków, testy.
 - [x] **Krok 3: Import z linku, pobieranie i ścieżka JSON-LD (bez AI)**
-  Bezpieczne pobieranie strony (sekcja 6), wyciąganie `schema.org/Recipe`, zapis przepisu,
+  Bezpieczne pobieranie strony (sekcja 6), wyciąganie `schema.org/Recipe` (JSON-LD, a gdy go brak: Microdata), zapis przepisu,
   cache w Redis, upsert po `(user_id, source_url)`.
   Kryterium: import działa dla kilku polskich i angielskich serwisów, testy na zapisanych
   fixtures HTML.
