@@ -107,7 +107,7 @@ Everything below needs a session; `POST`/`PUT`/`DELETE` also need the `X-CSRF-To
 | `POST /recipes/import` | Import a recipe from a link (see below) |
 
 Other users' recipes return `404`, not `403`, so their existence is not revealed.
-Nutrition values are estimates and carry a `source` (`off`, `manual`, `llm_estimate`).
+Nutrition values are estimates and carry a `source` (`usda`, `manual`, `llm_estimate`).
 
 ## Import from a link
 
@@ -243,7 +243,7 @@ Modern Proper, Once Upon a Chef and The Daily Meal in English.
   dictionary is converted to metric or left empty. A cup is 250 ml everywhere (see "Macronutrients").
 - Text a site gets wrong stays wrong: a typo in a site's own steps is copied faithfully.
 - A product the shared catalog does not know starts as a private AI estimate. The shared catalog is
-  filled from Open Food Facts (see "Macronutrients"); recipes pick up the measured product by themselves.
+  filled from the USDA data (see "Macronutrients"); recipes pick up the measured product by themselves.
 - A host name is resolved with the operating system's resolver, which has no timeout of its own
   (the 15 s budget applies from the first connection).
 
@@ -262,7 +262,7 @@ true`), and the answer says how good the estimate is instead of pretending to pr
   "measured_share": 1.0,
   "lines": [
     {"raw_text": "2 łyżki miodu", "grams": 42.6, "weight_source": "density", "is_estimate": false,
-     "product": {"id": 3, "name": "miód", "source": "off"},
+     "product": {"id": 3, "name": "miód", "source": "usda"},
      "nutrition": {"kcal": 129.5, "protein": 0.1, "fat": 0.0, "carbs": 35.1}, "problem": null}
   ],
   "missing": [
@@ -276,7 +276,7 @@ true`), and the answer says how good the estimate is instead of pretending to pr
   known weight of a spoon or a piece) are **listed in `missing` with the reason, never guessed**; the
   total is "what we know". Optional lines are left out unless `include_optional=true`.
 - `measured_share`: the share of the calories that rests on data that is **not** an AI guess
-  (Open Food Facts or typed in by the user). Every line also says whether it is an estimate.
+  (USDA or typed in by the user). Every line also says whether it is an estimate.
 - Per serving is the total divided by the number of servings. Weights are those of the raw
   ingredients (cooking, evaporation and oil absorption are not modelled). Values are rounded to
   0.1, with .x5 rounded up like on a nutrition label.
@@ -326,23 +326,43 @@ product during an import.
 - `PATCH /ingredients/{id}` edits one of the user's own products; the result is marked `manual`.
   Shared products answer `403` with a hint to add a product of the same name (which takes precedence).
 
-**The shared catalog from Open Food Facts.** Open Food Facts is an open database of packaged food
-built from labels: it has brands, not "flour". The script takes a list of basic ingredients
-([`base_ingredients.csv`](backend/app/data/base_ingredients.csv), with densities and piece weights written
-by hand because OFF has none), searches OFF for each and stores the **median** of the matching
-products' labels, which ignores a few odd entries. Products with fewer than five matches are skipped
-and reported. The script waits between requests (OFF allows about ten searches a minute), retries
-when the server is busy, and is safe to run again:
+**Measured data from the USDA.** A recipe says "flour", not a brand, so the shared catalog is built from
+generic foods. The [USDA FoodData Central](https://fdc.nal.usda.gov) publishes laboratory measurements of
+generic foods: Foundation Foods (about 400 foods) and SR Legacy (about 7800 foods, with the weight of a
+cup or a piece). The script loads a **raw copy** into the `usda_*` staging tables and does not touch the
+shared catalog; the catalog receives only products mapped to our own names, in a separate step.
 
 ```bash
-docker compose exec backend python -m app.scripts.import_off --dry-run   # look first
-docker compose exec backend python -m app.scripts.import_off             # write (a few minutes)
-docker compose exec backend python -m app.scripts.import_off --only mąka
+docker compose exec backend python -m app.scripts.import_usda   # downloads about 10 MB, takes seconds
 ```
 
-It connects as the database owner (`ADMIN_DATABASE_URL`), because the API's restricted role cannot write
-shared rows. The data is from [Open Food Facts](https://world.openfoodfacts.org) (c) Open Food Facts
-contributors, available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/).
+It reads the CSV straight out of the ZIP files, writes with `COPY` and replaces the tables in one
+transaction (a failure keeps the old data, running it again is safe). USDA stores nutrients as one row per
+(food, nutrient); the view `usda_food_macros` turns that into one row per food. Energy comes from
+nutrient 1008, and when a food has none (most Foundation foods) from the Atwater factors 2047, then 2048.
+The Foundation release of 2026-10-29 is published without its main tables, so the last complete release
+(2025-12-18) is pinned. Some Foundation foods have no carbohydrate value (nutrient 1005) and stay `NULL`.
+The USDA data is in the public domain (CC0). USDA values are stored with `source = 'usda'` and shown as
+measured, not as an estimate.
+The database constraint still allows the older value `off` (rows imported earlier from Open Food Facts);
+no code writes it any more.
+
+**Filling the catalog from USDA.** The staging tables hold 8000 English names; the shared catalog should hold
+our own, Polish ones. [`usda_mapping.csv`](backend/app/data/usda_mapping.csv) says which USDA food stands for
+each ingredient of the starter list (a reviewable file, chosen by hand, not guessed at run time). The script
+writes the macros per 100 g of the mapped food as `source = 'usda'`, together with the densities and piece
+weights of the starter list (USDA has no density, and its portion weights differ per food). Rows that are
+already in the catalog are updated, not duplicated:
+
+```bash
+docker compose exec backend python -m app.scripts.import_usda_catalog --dry-run   # look first
+docker compose exec backend python -m app.scripts.import_usda_catalog             # write
+```
+
+Two ingredients have no USDA counterpart and are skipped (their rows, if any, stay as they are): *mąka
+ziemniaczana* (the Polish one is potato starch, USDA only has potato flour with different macros) and
+*twaróg* (USDA has cottage cheese and ricotta, which differ a lot). Carbohydrate is computed by difference
+in USDA and can come out slightly negative (-0.4); it is stored as 0.
 
 ## Database schema
 
@@ -400,7 +420,7 @@ erDiagram
         text canonical_name "unique per scope"
         numeric kcal_per_100g
         numeric density_g_per_ml
-        text source "off | manual | llm_estimate"
+        text source "usda | manual | llm_estimate"
     }
     units {
         text code PK
@@ -413,7 +433,7 @@ erDiagram
         int user_id FK "NULL = shared; RLS"
         text unit_code FK "ml = density, piece/clove/..."
         numeric grams_per_unit
-        text source "off | manual | llm_estimate"
+        text source "usda | manual | llm_estimate"
     }
 ```
 
@@ -445,6 +465,10 @@ Design decisions:
 - **`unit_conversions`** holds the weight of one piece or spoon of a product, with the same
   shared/own visibility as products (a user's row for a shared product overrides it for that user
   only). Three partial unique indexes keep one value per scope.
+- **USDA staging tables** (`usda_food`, `usda_food_nutrient`, `usda_food_portion`,
+  `usda_measure_unit`) are a snapshot of the source data, owned by the database owner only: the
+  application role has no privileges on them. A trigram GIN index on `usda_food.description` is for
+  matching names later.
 - **`updated_at` is maintained by a trigger** (`WHEN OLD.* IS DISTINCT FROM NEW.*`), so it is right
   for any writer, including manual SQL.
 - **Writes through the ORM, reads as SQL files** in `backend/app/sql/`. The ORM does plain

@@ -21,10 +21,17 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_object(obj, name, type_, reflected, compare_to):
+    """The usda_* staging tables are plain SQL (see migration 0007), not ORM models: without this
+    `alembic check` would report them as tables to remove."""
+    return not (type_ in ("table", "index") and (name or "").startswith(("usda_", "ix_usda_")))
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -39,7 +46,11 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=include_object,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

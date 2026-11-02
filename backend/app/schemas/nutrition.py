@@ -2,9 +2,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-# Where a value comes from: off = measured (Open Food Facts), manual = typed in by the user,
-# llm_estimate = the AI's guess.
-Source = Literal["off", "manual", "llm_estimate"]
+# Where a value comes from: off = measured (Open Food Facts), usda = measured (USDA),
+# manual = typed in by the user, llm_estimate = the AI's guess.
+Source = Literal["off", "usda", "manual", "llm_estimate"]
 
 PROBLEM_MESSAGES = {
     "no_quantity": "no amount is given (for example 'to taste')",

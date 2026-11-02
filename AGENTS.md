@@ -171,7 +171,7 @@ commit + push, zaznaczenie `[x]` poniżej.
 - **Krok 5: scalony z Krokiem 4** (numeracja zachowana, żeby nie przenumerowywać Kroków 6-10).
 - [x] **Krok 6: Przeliczanie na gramy i makro**
   Tabela `unit_conversions`, przeliczanie jednostek domowych na gramy, dane odżywcze
-  (Open Food Facts i/lub ręczne), makro przepisu i na porcję, oznaczanie źródła wartości,
+  (USDA FoodData Central, wcześniej planowany Open Food Facts, i/lub ręczne), makro przepisu i na porcję, oznaczanie źródła wartości,
   ręczna korekta.
   Kryterium: testy rachunkowe, endpoint zwraca makro z flagą szacunku.
 - [ ] **Krok 7: Dziennik dnia**
