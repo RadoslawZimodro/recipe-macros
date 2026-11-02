@@ -38,6 +38,9 @@ os.environ["DATABASE_URL"] = _app_url.set(database=TEST_DB_NAME).render_as_strin
     hide_password=False
 )
 os.environ["ADMIN_DATABASE_URL"] = TEST_ADMIN_URL
+# Tests must NEVER reach the real Anthropic API (it costs money and is not deterministic): the key
+# is blanked before the app is imported. Tests that need an AI inject a fake one explicitly.
+os.environ["ANTHROPIC_API_KEY"] = ""
 # Redis database 15 is the tests' own: it is flushed before every test, so the cache and
 # rate-limit counters of the development stack (database 0) are never touched.
 os.environ["REDIS_URL"] = (

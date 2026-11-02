@@ -46,7 +46,7 @@ def _is_recipe_type(itemtype: str | None) -> bool:
     return any(token.rstrip("/").lower().endswith("/recipe") for token in (itemtype or "").split())
 
 
-def _prepare_text(soup: BeautifulSoup) -> None:
+def prepare_text(soup: BeautifulSoup) -> None:
     """Turn block boundaries and <br> into newlines once, so get_text() keeps list items and
     paragraphs apart without splitting sentences at inline tags."""
     for br in soup.find_all("br"):
@@ -109,7 +109,7 @@ def microdata_recipe_nodes(soup: BeautifulSoup) -> Iterator[dict[str, Any]]:
     ]
     if not recipes:
         return
-    _prepare_text(soup)
+    prepare_text(soup)
     budget = [MAX_ELEMENTS]
     for element in recipes:
         yield _item_to_dict(element, soup, 0, budget)
