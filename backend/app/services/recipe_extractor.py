@@ -1,6 +1,10 @@
-"""Extract a schema.org/Recipe from the JSON-LD blocks of an HTML page (no AI involved).
+"""Extract a schema.org/Recipe from an HTML page's structured data (no AI involved).
 
-Real-world JSON-LD is messy, so this module is deliberately forgiving about SHAPE (a flat
+Two formats are read: JSON-LD blocks and, as a fallback when those hold no usable recipe,
+Microdata (see microdata.py, which converts it to the same dictionary shape). JSON-LD wins
+when both are present: sites that carry both publish the same recipe twice.
+
+Real-world data is messy, so this module is deliberately forgiving about SHAPE (a flat
 object, a list, an @graph; @type as a string or a list; instructions as text, steps or
 sections; images as URLs or objects) and strict about RESULT: everything is cleaned,
 truncated to the limits of RecipeIn and validated before it is returned.
@@ -21,6 +25,7 @@ from bs4 import BeautifulSoup
 from pydantic import ValidationError
 
 from app.schemas.recipe import IngredientLineIn, RecipeIn, StepIn
+from app.services.microdata import microdata_recipe_nodes
 
 MAX_NODES = 5000  # a hostile page cannot make us walk an endless JSON tree
 MAX_DEPTH = 10
@@ -42,6 +47,7 @@ _DURATION = re.compile(
 class ExtractedRecipe:
     recipe: RecipeIn
     source_nutrition: dict[str, Any] | None
+    method: str  # "jsonld" | "microdata": stored as the recipe's import_method
 
 
 # --- text helpers ---
@@ -223,7 +229,7 @@ def _recipe_nodes(soup: BeautifulSoup) -> Iterator[dict]:
                 yield node
 
 
-def _build(node: dict, base_url: str, source_url: str) -> ExtractedRecipe | None:
+def _build(node: dict, base_url: str, source_url: str, method: str) -> ExtractedRecipe | None:
     title = _one_line(_first(node.get("name")))
     steps = _steps(node.get("recipeInstructions"))
     ingredients = _ingredients(node)
@@ -245,7 +251,16 @@ def _build(node: dict, base_url: str, source_url: str) -> ExtractedRecipe | None
         )
     except ValidationError:
         return None
-    return ExtractedRecipe(recipe=recipe, source_nutrition=_nutrition(node.get("nutrition")))
+    return ExtractedRecipe(
+        recipe=recipe, source_nutrition=_nutrition(node.get("nutrition")), method=method
+    )
+
+
+def _fullest(nodes: Iterator[dict], base_url: str, source_url: str, method: str):
+    built = (_build(node, base_url, source_url, method) for node in nodes)
+    usable = [c for c in built if c is not None]
+    # Pages sometimes carry a short teaser next to the full recipe: take the fuller one.
+    return max(usable, key=lambda c: len(c.recipe.steps) + len(c.recipe.ingredients), default=None)
 
 
 def extract_recipe(html_bytes: bytes, *, base_url: str, source_url: str) -> ExtractedRecipe | None:
@@ -255,9 +270,7 @@ def extract_recipe(html_bytes: bytes, *, base_url: str, source_url: str) -> Extr
     it); `source_url` is the normalized address that is stored with the recipe.
     """
     soup = BeautifulSoup(html_bytes, "lxml")
-    candidates = (_build(n, base_url, source_url) for n in _recipe_nodes(soup))
-    usable = [c for c in candidates if c is not None]
-    if not usable:
-        return None
-    # Pages sometimes carry a short teaser next to the full recipe: take the fuller one.
-    return max(usable, key=lambda c: len(c.recipe.steps) + len(c.recipe.ingredients))
+    found = _fullest(_recipe_nodes(soup), base_url, source_url, "jsonld")
+    if found is None:  # Microdata is only read when JSON-LD gave nothing usable
+        found = _fullest(microdata_recipe_nodes(soup), base_url, source_url, "microdata")
+    return found

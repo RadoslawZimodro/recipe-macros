@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Spiced Carrot Soup</title>
+</head>
+<body>
+  <main>
+    <div id="recipe" itemscope itemtype="http://schema.org/Recipe" itemref="ingredient-list">
+      <h1 itemprop="name">Spiced Carrot Soup</h1>
+      <link itemprop="image" href="https://cdn.example.test/carrot-soup.jpg">
+      <meta itemprop="recipeYield" content="4 bowls">
+      <meta itemprop="prepTime" content="PT10M">
+      <meta itemprop="cookTime" content="PT30M">
+
+      <div itemprop="recipeInstructions" itemscope itemtype="http://schema.org/HowToStep">
+        <span itemprop="text">Sweat the onion in butter until soft.</span>
+      </div>
+      <div itemprop="recipeInstructions" itemscope itemtype="http://schema.org/HowToStep">
+        <p itemprop="text">Add carrots, stock and cumin; simmer for 25 minutes.</p>
+      </div>
+      <div itemprop="recipeInstructions" itemscope itemtype="http://schema.org/HowToStep">
+        <p itemprop="text">Blend until smooth and season.</p>
+      </div>
+
+      <div itemprop="review" itemscope itemtype="http://schema.org/Review">
+        <span itemprop="name">Great soup!</span>
+        <span itemprop="reviewBody">Loved it, will make again.</span>
+      </div>
+    </div>
+  </main>
+
+  <aside id="ingredient-list">
+    <h2>Ingredients</h2>
+    <ul>
+      <li itemprop="recipeIngredient">500 g carrots</li>
+      <li itemprop="recipeIngredient">1 onion</li>
+      <li itemprop="recipeIngredient">1 tsp ground cumin</li>
+      <li itemprop="recipeIngredient">750 ml vegetable stock</li>
+    </ul>
+  </aside>
+</body>
+</html>
