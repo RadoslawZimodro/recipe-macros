@@ -143,3 +143,7 @@ class RecipeImportOut(BaseModel):
     # created: new recipe; existing: already saved, nothing fetched; refreshed: overwritten
     status: Literal["created", "existing", "refreshed"]
     recipe: RecipeOut
+    # True when the AI shaped the recipe (parsed ingredients, tidied steps). False when it was
+    # not needed (the recipe already existed) or not available; `notice` then explains why.
+    ai_used: bool = False
+    notice: str | None = None

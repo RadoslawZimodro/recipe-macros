@@ -53,6 +53,17 @@ class Settings(BaseSettings):
     robots_error_cache_ttl_sec: int = 600  # an unreachable robots.txt is retried sooner
     import_rate_limit_per_min: int = 10  # imports that reach the network, per user
 
+    # --- AI import (Anthropic API, called from the backend only) ---
+    ai_model: str = "claude-haiku-5-5"  # cheap and fast; swap for a stronger model via AI_MODEL
+    ai_timeout_sec: float = 60.0
+    ai_max_output_tokens: int = 8000
+    ai_max_page_chars: int = 30_000  # page text sent to the model when there is no markup
+    ai_daily_limit_per_user: int = 20  # AI calls per user per UTC day (cache hits are free)
+    ai_cache_ttl_sec: int = 7 * 24 * 3600
+    # Minimum pg_trgm similarity for linking an AI-named product to an existing one when the
+    # names are not identical. High on purpose: a wrong link silently gives wrong macros.
+    ai_product_match_similarity: float = 0.8
+
     # Login brute-force guard: at most N attempts per client IP per window (seconds).
     login_rate_limit_attempts: int = 10
     login_rate_limit_window_sec: int = 300

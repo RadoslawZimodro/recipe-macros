@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 3 (import from a link: JSON-LD and Microdata). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 4 (import from a link, with AI). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -108,23 +108,27 @@ Nutrition values are estimates and carry a `source` (`off`, `manual`, `llm_estim
 
 ## Import from a link
 
-`POST /recipes/import` with `{"url": "...", "refresh": false}` fetches a recipe page and saves its
-schema.org `Recipe` as a normal recipe and keeps a link to the original in `source_url`. The recipe is
-read from the page's JSON-LD (`import_method = jsonld`) or, when that holds no usable recipe, from
-schema.org Microdata (`import_method = microdata`).
+`POST /recipes/import` with `{"url": "...", "refresh": false}` fetches a recipe page and saves it as a
+normal recipe, keeping a link to the original in `source_url`. The page is read in two stages: its
+own markup (schema.org JSON-LD, or Microdata when JSON-LD has no usable recipe) is read by plain
+code, and **the AI then shapes the result** (see "AI import" below). Recipes the AI shaped have
+`import_method = llm`; if the AI was not available they keep `jsonld` / `microdata`.
 
 | Result | Meaning |
 |---|---|
 | `201 {"status": "created"}` | New recipe saved |
 | `200 {"status": "existing"}` | You already have it; nothing was fetched (your edits are safe) |
 | `200 {"status": "refreshed"}` | `refresh: true`: page fetched again, recipe overwritten in place (manual edits are lost) |
-| `422/429/502/503/504` | `{"detail": {"code": ..., "message": ...}}` with a stable `code` such as `robots_disallowed`, `blocked_address`, `unsupported_site`, `no_recipe_data`, `access_denied`, `rate_limited` |
+| `422/429/502/503/504` | `{"detail": {"code": ..., "message": ...}}` with a stable `code` such as `robots_disallowed`, `blocked_address`, `unsupported_site`, `no_recipe_data`, `access_denied`, `rate_limited`, `ai_unavailable`, `ai_invalid_output` |
 
-Ingredient lines are saved as text (`raw_text`) only; splitting them into quantity, unit and product
-is done by the AI step (Step 4). Try the pipeline on any address without saving anything:
+Every successful answer also says `"ai_used": true|false` and, when the AI could not be used, a
+`"notice"` that explains why.
+
+Try the pipeline on any address without saving anything (`--ai` shows the AI's reading of every
+ingredient line, so you can judge its quality on real pages; it calls the paid API):
 
 ```bash
-docker compose exec backend python -m app.scripts.fetch_recipe "https://example.com/some-recipe"
+docker compose exec backend python -m app.scripts.fetch_recipe "https://example.com/some-recipe" --ai
 ```
 
 How a page is fetched (`app/services/safe_fetch.py`, `page_fetcher.py`, `robots.py`):
@@ -167,20 +171,77 @@ DO UPDATE SET title = EXCLUDED.title, ..., imported_at = EXCLUDED.imported_at
 RETURNING id, (xmax = 0) AS inserted;   -- xmax <> 0 means an existing row was updated
 ```
 
+## AI import
+
+The AI (Claude, `claude-haiku-5-5` by default, change it with `AI_MODEL`) is called from the backend
+only, with **one request per import**. Its answer is forced into a JSON schema (structured outputs
+through `messages.parse` with Pydantic models), so it cannot come back in another shape. It has no
+tools and no access to the database or the internet, so text hidden in a web page can at most make
+it return a wrong answer, which is then rejected.
+
+| Page | What the AI gets | What it returns |
+|---|---|---|
+| Has markup (JSON-LD / Microdata) | the ingredient lines and steps from the markup | every ingredient line taken apart (quantity, unit from our `units` table, product, optional flag, estimated nutrition per 100 g) and tidied steps |
+| No markup | the cleaned text of the page (menus, scripts, footers removed; max 30 000 characters, cut around the "Ingredients" heading) | the whole recipe (title, servings, times, tags, steps, ingredient lines) |
+
+Title, description, servings, times, tags and image of a page **with** markup stay exactly as the
+site published them; only the steps and ingredient lines go through the AI. Ingredient text
+(`raw_text`) always stays the original wording.
+
+**Products.** For every product the AI names, the catalog is searched in one query
+([`match_products.sql`](backend/app/sql/match_products.sql), a `LATERAL` join over `unnest`): the
+exact name first, then a very similar one (`pg_trgm` similarity >= 0.8, and the digits in the two
+names must be identical, because "mleko 2%" and "mleko 3,2%" score exactly 0.80 and are different
+products). The user's own product shadows a shared one. Anything else becomes a **private product with
+`source = 'llm_estimate'`**; the AI never writes to the shared catalog. If the AI's numbers are not
+believable (out of range, more than 100 g of nutrients in 100 g, calories far from 4/4/9 kcal per
+gram) the product is not created and the line stays unlinked, with its quantity and unit.
+
+**Checks on the answer.** The shape is guaranteed by the schema; the meaning is checked in code
+(`validate_*` in [`ai_extract.py`](backend/app/services/ai_extract.py)): one entry per ingredient line,
+steps present, quantities in range, ingredient lines of a whole-page reading must be *found on the
+page* (an invented ingredient is caught), and pounds/ounces must be converted (a real test on a real
+page once returned "1 pound" as `1 g`). A wrong answer gets **one correction attempt** that names the
+problems; a second failure ends the import with `ai_invalid_output` and nothing is saved.
+
+**Cost control.**
+
+- Answers are cached in Redis for 7 days, keyed by model, prompt version and the exact input; only
+  validated answers are cached, and a refresh of an unchanged page costs nothing.
+- Each user has a daily allowance of AI imports (20); cache hits do not count.
+- Every API call is logged (model, mode, tokens, request id) and counted in Redis per day:
+  `redis-cli get ai:calls:<YYYY-MM-DD>`, `ai:input_tokens:<day>`, `ai:output_tokens:<day>`.
+- Measured on real pages with Haiku: about **0.2 cents per import**.
+
+**When the AI is not available** (no key, invalid key, no credit, rate limit, outage, daily limit)
+a page with markup is still imported in its basic form (ingredients as plain text, `ai_used: false`
+and a `notice`), and can be upgraded later with `refresh: true`. A page without markup cannot be
+imported without the AI (`ai_unavailable`, or `no_recipe_data` when no key is configured).
+
+**Measured on real pages** (Polish and English, via the `--ai` script): ingredient lines are taken
+apart correctly (units, fractions, ranges, countable items such as "2 żółtka"), a page whose markup
+put the *whole article* into the steps (52 lines) came out as 8 clean steps, pages with no usable
+markup (Kwestia Smaku, Słodki Pomysł) are read from their text, and imperial units are converted
+(`2 (28-ounce) cans` -> 1588 g). The design is deliberately the minimal one (a single request); if
+quality on more pages turns out to be too low, the next step is a second request that lets the AI
+choose the product from a list of candidates from the catalog.
+
 **Tested on real sites** (read-only, nothing stored in the repo; tests use synthetic pages written
 for them): works on Kuchnia Doroty, Kuchnia Lidla and Ania Gotuje (Microdata) in Polish, and on The
 Modern Proper, Once Upon a Chef and The Daily Meal in English.
 
 **Known limitations**
 
-- Pages without a usable recipe in JSON-LD or Microdata end in `no_recipe_data` until the AI import
-  (Step 4): some blogs mark up only the title, picture and rating (for example Kwestia Smaku and Moje
-  Wypieki), some have no recipe markup at all. Some sites (for example przepis.pl) refuse automated
-  clients with `403`; this is reported, never circumvented.
-- The data is only as good as the site's markup. Ania Gotuje, for example, marks its whole article as
-  `recipeInstructions`, so the "steps" include intro text and notes. Section headings inside
-  ingredient lists ("Ciasto:") are dropped, but headings merged into step text are kept as written.
-  Cleaning this up is what the AI step is for.
+- Without the AI, pages whose markup is incomplete (some blogs mark up only the title, picture and
+  rating) cannot be imported. Some sites (for example przepisy.pl) refuse automated clients with
+  `403`; this is reported, never circumvented.
+- AI output is an estimate. Nutrition values are the model's guess for a typical product (always
+  `source = llm_estimate`), quantities of "to taste" lines stay empty, and a unit that is not in the
+  dictionary is converted to metric or left empty. `cup` is 240 ml for US recipes, while a Polish
+  "szklanka" is 250 ml; the exact conversion arrives with the nutrition step.
+- Text a site gets wrong stays wrong: a typo in a site's own steps is copied faithfully.
+- The shared product catalog is still empty, so almost every product starts as a private estimate;
+  the Open Food Facts import (Step 6) fills it with measured data.
 - A host name is resolved with the operating system's resolver, which has no timeout of its own
   (the 15 s budget applies from the first connection).
 

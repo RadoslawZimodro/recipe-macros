@@ -156,7 +156,7 @@ commit + push, zaznaczenie `[x]` poniżej.
   cache w Redis, upsert po `(user_id, source_url)`.
   Kryterium: import działa dla kilku polskich i angielskich serwisów, testy na zapisanych
   fixtures HTML.
-- [ ] **Krok 4: Import z linku, AI (fallback + parser składników)**
+- [x] **Krok 4: Import z linku, AI (fallback + parser składników)**
   AI jest sercem importu i samo przypisuje elementy do pól przepisu (hybryda: dane
   strukturalne z JSON-LD, jeśli są, plus AI zawsze). Strona bez JSON-LD: oczyszczenie HTML
   do tekstu i ekstrakcja całego przepisu przez LLM. Każdy import: `raw_text` → ilość,
