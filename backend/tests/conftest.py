@@ -14,6 +14,7 @@ application engine points at the test database.
 """
 
 import os
+import re
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
@@ -37,6 +38,11 @@ os.environ["DATABASE_URL"] = _app_url.set(database=TEST_DB_NAME).render_as_strin
     hide_password=False
 )
 os.environ["ADMIN_DATABASE_URL"] = TEST_ADMIN_URL
+# Redis database 15 is the tests' own: it is flushed before every test, so the cache and
+# rate-limit counters of the development stack (database 0) are never touched.
+os.environ["REDIS_URL"] = (
+    re.sub(r"/\d+$", "", os.environ.get("REDIS_URL", "redis://localhost:6379/0")) + "/15"
+)
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -47,6 +53,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app import rate_limit  # noqa: E402
 from app.db import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.redis_client import get_redis  # noqa: E402
 
 _admin_engine = create_engine(TEST_ADMIN_URL)
 
@@ -87,6 +94,12 @@ def _clean_state():
             )
         )
     rate_limit.clear()
+    get_redis().flushdb()
+
+
+@pytest.fixture
+def redis_client():
+    return get_redis()
 
 
 @pytest.fixture
