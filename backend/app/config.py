@@ -38,6 +38,21 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     cookie_samesite: str = "lax"
 
+    # --- Recipe import: page fetching ---
+    # The product token before "/" is also what robots.txt rules are matched against.
+    fetch_user_agent: str = (
+        "RecipeMacrosBot/0.1 (+https://github.com/RadoslawZimodro/recipe-macros)"
+    )
+    fetch_max_bytes: int = 2 * 1024 * 1024  # counted AFTER decompression (gzip bombs)
+    fetch_connect_timeout_sec: float = 5.0
+    fetch_read_timeout_sec: float = 10.0
+    fetch_total_timeout_sec: float = 15.0  # whole import, redirects and body included
+    fetch_max_redirects: int = 5
+    page_cache_ttl_sec: int = 24 * 3600
+    robots_cache_ttl_sec: int = 24 * 3600
+    robots_error_cache_ttl_sec: int = 600  # an unreachable robots.txt is retried sooner
+    import_rate_limit_per_min: int = 10  # imports that reach the network, per user
+
     # Login brute-force guard: at most N attempts per client IP per window (seconds).
     login_rate_limit_attempts: int = 10
     login_rate_limit_window_sec: int = 300

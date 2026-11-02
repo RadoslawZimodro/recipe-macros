@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db import engine
 from app.dependencies import CSRF_HEADER
-from app.routers import auth, ingredients, recipes
+from app.routers import auth, ingredients, recipe_import, recipes
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(recipe_import.router)
 app.include_router(recipes.router)
 app.include_router(ingredients.router)
 app.include_router(ingredients.units_router)

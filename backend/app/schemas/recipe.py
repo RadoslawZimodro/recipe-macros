@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AnyHttpUrl,
@@ -128,3 +128,18 @@ class RecipeListOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# --- import ---
+class ImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: Annotated[str, StringConstraints(max_length=2048)]
+    # Fetch the page again and overwrite the saved recipe (manual edits are lost).
+    refresh: bool = False
+
+
+class RecipeImportOut(BaseModel):
+    # created: new recipe; existing: already saved, nothing fetched; refreshed: overwritten
+    status: Literal["created", "existing", "refreshed"]
+    recipe: RecipeOut

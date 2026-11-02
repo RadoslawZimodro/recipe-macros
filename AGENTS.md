@@ -151,7 +151,7 @@ commit + push, zaznaczenie `[x]` poniżej.
   Dopracowanie schematu (pytaj o decyzje), migracje, indeksy, ręczne dodawanie przepisu
   przez API (bez importu).
   Kryterium: CRUD przepisów, składników i kroków, testy.
-- [ ] **Krok 3: Import z linku, pobieranie i ścieżka JSON-LD (bez AI)**
+- [x] **Krok 3: Import z linku, pobieranie i ścieżka JSON-LD (bez AI)**
   Bezpieczne pobieranie strony (sekcja 6), wyciąganie `schema.org/Recipe`, zapis przepisu,
   cache w Redis, upsert po `(user_id, source_url)`.
   Kryterium: import działa dla kilku polskich i angielskich serwisów, testy na zapisanych
