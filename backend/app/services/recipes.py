@@ -49,7 +49,7 @@ def _scalar_fields(payload: RecipeIn) -> dict:
     return payload.model_dump(exclude={"steps", "ingredients"})
 
 
-def _children(
+def build_children(
     recipe_id: int, user_id: int, payload: RecipeIn
 ) -> list[RecipeStep | RecipeIngredient]:
     """Build step and ingredient rows; list order becomes `position` (1-based)."""
@@ -96,7 +96,7 @@ def create_recipe(session: Session, user_id: int, payload: RecipeIn) -> int:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "You already have a recipe from this source URL"
         ) from None
-    session.add_all(_children(recipe.id, user_id, payload))
+    session.add_all(build_children(recipe.id, user_id, payload))
     _commit(session)
     return recipe.id
 
@@ -114,7 +114,7 @@ def replace_recipe(session: Session, recipe_id: int, payload: RecipeIn) -> None:
     # the new rows would otherwise collide with the old ones at flush time.
     session.execute(delete(RecipeStep).where(RecipeStep.recipe_id == recipe_id))
     session.execute(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_id))
-    session.add_all(_children(recipe_id, recipe.user_id, payload))
+    session.add_all(build_children(recipe_id, recipe.user_id, payload))
     _commit(session)
 
 
