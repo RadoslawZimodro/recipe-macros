@@ -1,0 +1,59 @@
+name: Claude Code Review
+
+# Runs a review on every pull request (opened and updated).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# The agent needs to read code and leave comments on the PR.
+# id-token: write is required for OIDC login (without it the Action fails with
+# "Could not fetch an OIDC token").
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the diff against main works
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Login via a Pro/Max subscription (token from `claude setup-token`).
+          # Alternative: anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # track_progress: the Action keeps one PR comment updated with progress
+          # and the result, so the outcome is ALWAYS visible in the PR.
+          track_progress: true
+          prompt: |
+            Zrób review tego Pull Requesta. Czytaj AGENTS.md (zasady projektu) przed oceną.
+            Stack: FastAPI + SQLAlchemy 2.x + Alembic + PostgreSQL + Redis (backend/),
+            React (Vite) + Tailwind (frontend/). Kod i komentarze są po angielsku,
+            odpowiedź napisz po polsku.
+
+            Skup się na (od najważniejszego):
+            - poprawności i regresjach: import przepisów (JSON-LD/Microdata/LLM), parser
+              składników, przeliczanie jednostek, liczenie makro, dopasowanie lodówki;
+            - bazie danych: każda zmiana modelu ma migrację Alembic w tym samym PR,
+              sensowne indeksy i constrainty, kluczowa logika w czytelnym SQL
+              (parametryzowanym), izolacja danych per użytkownik;
+            - bezpieczeństwie: SSRF przy pobieraniu URL (blokada adresów lokalnych i
+              prywatnych), timeout/limit rozmiaru/robots.txt, auth (JWT), brak sekretów
+              w kodzie i logach, wywołania LLM tylko z backendu;
+            - LLM: wymuszony strukturalny JSON walidowany Pydantic, obsługa błędów,
+              cache w Redis, makro oznaczone jako szacunek (`source`);
+            - testach: logika ma testy pytest, nie ma nietestowanych gałęzi błędów.
+
+            ZAWSZE opublikuj podsumowanie review jako komentarz na PR:
+            - najpierw jedno zdanie ogólnej oceny,
+            - potem lista uwag uporządkowana od najpoważniejszych (plik + linia + na czym
+              polega problem + propozycja), z rozróżnieniem must-fix i nice-to-have,
+            - jeśli nie ma żadnych uwag, napisz to wprost ("Brak uwag — kod wygląda OK").
+            Nie zgłaszaj problemów na siłę. Nie zmieniaj kodu.
