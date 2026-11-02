@@ -169,7 +169,7 @@ commit + push, zaznaczenie `[x]` poniżej.
   ("2 łyżki oliwy", "1 średnia cebula", "szczypta soli", "200 g mąki") z zamockowanym LLM,
   błędy są czytelne.
 - **Krok 5: scalony z Krokiem 4** (numeracja zachowana, żeby nie przenumerowywać Kroków 6-10).
-- [ ] **Krok 6: Przeliczanie na gramy i makro**
+- [x] **Krok 6: Przeliczanie na gramy i makro**
   Tabela `unit_conversions`, przeliczanie jednostek domowych na gramy, dane odżywcze
   (Open Food Facts i/lub ręczne), makro przepisu i na porcję, oznaczanie źródła wartości,
   ręczna korekta.
