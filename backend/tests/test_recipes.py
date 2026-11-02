@@ -2,6 +2,7 @@
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 
 def recipe_payload(**overrides):
@@ -298,3 +299,19 @@ def test_writes_require_the_csrf_header(alice):
     assert alice.put(f"/recipes/{created['id']}", json=recipe_payload()).status_code == 403
     assert alice.delete(f"/recipes/{created['id']}").status_code == 403
     assert alice.get(f"/recipes/{created['id']}").status_code == 200  # reads need no CSRF
+
+
+@pytest.mark.parametrize("method", ["jsonld", "microdata", "llm", "manual"])
+def test_database_accepts_every_known_import_method(alice, admin_db, method):
+    admin_db.execute(
+        text("INSERT INTO recipes (user_id, title, import_method) VALUES (:u, 'x', :m)"),
+        {"u": alice.user_id, "m": method},
+    )
+
+
+def test_database_rejects_an_unknown_import_method(alice, admin_db):
+    with pytest.raises(DBAPIError, match="ck_recipes_import_method"):
+        admin_db.execute(
+            text("INSERT INTO recipes (user_id, title, import_method) VALUES (:u, 'x', 'xml')"),
+            {"u": alice.user_id},
+        )

@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 3 (import from a link, JSON-LD). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 3 (import from a link: JSON-LD and Microdata). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -109,8 +109,9 @@ Nutrition values are estimates and carry a `source` (`off`, `manual`, `llm_estim
 ## Import from a link
 
 `POST /recipes/import` with `{"url": "...", "refresh": false}` fetches a recipe page and saves its
-schema.org `Recipe` (read from the page's JSON-LD) as a normal recipe with `import_method = jsonld`
-and a link to the original in `source_url`.
+schema.org `Recipe` as a normal recipe and keeps a link to the original in `source_url`. The recipe is
+read from the page's JSON-LD (`import_method = jsonld`) or, when that holds no usable recipe, from
+schema.org Microdata (`import_method = microdata`).
 
 | Result | Meaning |
 |---|---|
@@ -146,6 +147,12 @@ How a page is fetched (`app/services/safe_fetch.py`, `page_fetcher.py`, `robots.
   links are refused with a clear message, pages behind a login or paywall (401/402/403) are not bypassed.
 - **Cache.** The fetched HTML is stored compressed in Redis for 24 h, keyed by the normalized URL, so
   re-parsing or the AI step does not hit the site again. Redis being down never breaks an import.
+- **Microdata** (`app/services/microdata.py`) is converted into the same dictionary shape as JSON-LD, so
+  one mapping handles both. It follows the HTML Microdata rules: properties of a nested item (an
+  author's `name`, a review's text) never leak into the recipe, values come from the right
+  attribute (`content` of `<meta>`, `src` of `<img>`, `datetime` of `<time>`, `href` of `<a>`/`<link>`),
+  `itemref` pulls in properties defined elsewhere, and block elements (not inline tags like `<b>`)
+  separate steps. JSON-LD wins when both formats carry a recipe.
 - **URL normalization** (`source_url`, upsert key, cache key): host in lower case, default port and
   `#fragment` dropped, tracking parameters (`utm_*`, `fbclid`, `gclid`, ...) removed.
 
@@ -161,17 +168,19 @@ RETURNING id, (xmax = 0) AS inserted;   -- xmax <> 0 means an existing row was u
 ```
 
 **Tested on real sites** (read-only, nothing stored in the repo; tests use synthetic pages written
-for them): works on Kuchnia Doroty and Kuchnia Lidla (Polish) and on The Modern Proper, Once Upon a
-Chef and The Daily Meal (English).
+for them): works on Kuchnia Doroty, Kuchnia Lidla and Ania Gotuje (Microdata) in Polish, and on The
+Modern Proper, Once Upon a Chef and The Daily Meal in English.
 
 **Known limitations**
 
-- Only JSON-LD is read. Several popular Polish blogs (for example Kwestia Smaku, Moje Wypieki, Ania
-  Gotuje) publish the recipe as schema.org *Microdata* instead, and some blogs have no recipe markup
-  at all; both end in `no_recipe_data` until the AI import (Step 4). Some sites (for example
-  przepisy.pl) refuse automated clients with `403`; this is reported, never circumvented.
-- Section headings inside ingredient lists ("Ciasto:") are dropped, but headings merged into step
-  text are kept as the site wrote them.
+- Pages without a usable recipe in JSON-LD or Microdata end in `no_recipe_data` until the AI import
+  (Step 4): some blogs mark up only the title, picture and rating (for example Kwestia Smaku and Moje
+  Wypieki), some have no recipe markup at all. Some sites (for example przepis.pl) refuse automated
+  clients with `403`; this is reported, never circumvented.
+- The data is only as good as the site's markup. Ania Gotuje, for example, marks its whole article as
+  `recipeInstructions`, so the "steps" include intro text and notes. Section headings inside
+  ingredient lists ("Ciasto:") are dropped, but headings merged into step text are kept as written.
+  Cleaning this up is what the AI step is for.
 - A host name is resolved with the operating system's resolver, which has no timeout of its own
   (the 15 s budget applies from the first connection).
 
@@ -201,7 +210,7 @@ erDiagram
         int servings
         text_array tags "GIN index"
         jsonb source_nutrition
-        text import_method "jsonld | llm | manual"
+        text import_method "jsonld | microdata | llm | manual"
         timestamptz updated_at "trigger"
         timestamptz deleted_at "soft delete"
     }

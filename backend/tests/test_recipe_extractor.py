@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.jsonld import extract_recipe
+from app.services.recipe_extractor import extract_recipe
 
 FIXTURES = Path(__file__).parent / "fixtures" / "recipes"
 SOURCE = "https://example.test/przepis"
@@ -144,8 +144,20 @@ def test_the_fuller_recipe_wins_over_teasers():
     assert (r.prep_time_min, r.cook_time_min) == (15, 45)
 
 
-def test_microdata_only_page_has_no_recipe_for_this_step():
-    assert fixture("microdata_only.html") is None
+def test_microdata_only_page_is_read_as_a_fallback():
+    result = fixture("microdata_only.html")
+
+    assert result.method == "microdata"
+    r = result.recipe
+    assert r.title == "Naleśniki babci"
+    assert r.servings == 4
+    assert [i.raw_text for i in r.ingredients] == ["2 szklanki mąki", "2 jajka", "2 szklanki mleka"]
+    assert [s.instruction for s in r.steps] == ["Wymieszaj składniki i smaż na rozgrzanej patelni."]
+
+
+def test_json_ld_pages_report_the_jsonld_method():
+    assert fixture("pl_flat.html").method == "jsonld"
+    assert fixture("en_graph.html").method == "jsonld"
 
 
 def test_json_ld_without_a_recipe_gives_none():

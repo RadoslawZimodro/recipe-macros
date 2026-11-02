@@ -3,15 +3,15 @@
     docker compose exec backend python -m app.scripts.fetch_recipe <url>
 
 Fetches the page (same SSRF protection and robots.txt rules as the API, no cache), extracts
-the schema.org recipe from its JSON-LD and prints it as JSON. Nothing is written to the
+the schema.org recipe from its JSON-LD or Microdata and prints it as JSON. Nothing is written to the
 database and no page is stored, so third-party content never ends up in the repository.
 """
 
 import json
 import sys
 
-from app.services.jsonld import extract_recipe
 from app.services.page_fetcher import PageFetcher
+from app.services.recipe_extractor import extract_recipe
 from app.services.safe_fetch import FetchError
 from app.services.urls import UrlError, normalize_url
 
@@ -29,7 +29,10 @@ def main(argv: list[str]) -> int:
 
     extracted = extract_recipe(page.body, base_url=page.final_url, source_url=url)
     if extracted is None:
-        print("error [no_recipe_data]: no schema.org Recipe found in JSON-LD", file=sys.stderr)
+        print(
+            "error [no_recipe_data]: no schema.org Recipe found in JSON-LD or Microdata",
+            file=sys.stderr,
+        )
         return 1
 
     output = {

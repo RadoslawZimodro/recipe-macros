@@ -2,8 +2,8 @@
 
 Flow: the address is normalized; if the user already has that recipe it is returned as is
 (no network). Otherwise the per-user import budget is checked, the page is fetched through
-the SSRF-safe fetcher, the schema.org recipe is extracted from its JSON-LD and saved with a
-single `INSERT ... ON CONFLICT DO UPDATE` (app/sql/upsert_imported_recipe.sql).
+the SSRF-safe fetcher, the schema.org recipe is extracted from its JSON-LD or Microdata and
+saved with a single `INSERT ... ON CONFLICT DO UPDATE` (app/sql/upsert_imported_recipe.sql).
 """
 
 import json
@@ -18,9 +18,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import RecipeIngredient, RecipeStep
 from app.schemas.recipe import RecipeOut
-from app.services.jsonld import ExtractedRecipe, extract_recipe
 from app.services.limits import RateLimitExceeded, check_rate_limit
 from app.services.page_fetcher import PageFetcher
+from app.services.recipe_extractor import ExtractedRecipe, extract_recipe
 from app.services.recipes import build_children, get_recipe
 from app.services.safe_fetch import FetchError
 from app.services.sql import load_sql
@@ -106,7 +106,7 @@ def _save(session: Session, user_id: int, extracted: ExtractedRecipe) -> tuple[i
             "source_nutrition": (
                 json.dumps(extracted.source_nutrition) if extracted.source_nutrition else None
             ),
-            "import_method": "jsonld",
+            "import_method": extracted.method,
         },
     ).one()
     # On a refresh the old children go first; the (recipe_id, position) keys would collide.
@@ -151,8 +151,8 @@ def import_recipe(
     if extracted is None:
         raise ImportFailed(
             "no_recipe_data",
-            "No structured recipe data was found on this page. Import of pages without it "
-            "is not available yet.",
+            "No structured recipe data (JSON-LD or Microdata) was found on this page. Import of "
+            "pages without it is not available yet.",
         )
 
     recipe_id, inserted = _save(session, user_id, extracted)

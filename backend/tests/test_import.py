@@ -19,7 +19,8 @@ FIXTURES = Path(__file__).parent / "fixtures" / "recipes"
 URL = "https://blog.example.test/szarlotka"
 PL_FLAT = (FIXTURES / "pl_flat.html").read_bytes()
 EN_GRAPH = (FIXTURES / "en_graph.html").read_bytes()
-MICRODATA = (FIXTURES / "microdata_only.html").read_bytes()
+MICRODATA = (FIXTURES / "microdata_pl_blog.html").read_bytes()
+NO_MARKUP = b"<html><body><h1>Zupa</h1><p>Pokroj i ugotuj, ale bez znacznikow.</p></body></html>"
 ARTICLE = (FIXTURES / "article_only.html").read_bytes()
 
 
@@ -93,6 +94,30 @@ def test_the_stored_address_is_the_normalized_one(alice, fake):
     assert response.status_code == 201
     assert response.json()["recipe"]["source_url"] == URL
     assert fake.calls == [(URL, False)]
+
+
+def test_import_reads_microdata_pages_and_records_the_method(alice, fake):
+    fake.pages = {URL: MICRODATA}
+
+    response = do_import(alice)
+
+    assert response.status_code == 201
+    recipe = response.json()["recipe"]
+    assert recipe["import_method"] == "microdata"
+    assert recipe["title"] == "Pierogi ruskie z cebulką"
+    assert len(recipe["steps"]) == 4 and len(recipe["ingredients"]) == 6
+    assert recipe["source_nutrition"]["calories"] == "180 kcal"
+
+
+def test_refresh_can_switch_the_method_when_the_site_changes_format(alice, fake):
+    first = do_import(alice).json()["recipe"]
+    assert first["import_method"] == "jsonld"
+    fake.pages[URL] = MICRODATA  # the site was redesigned and now publishes Microdata
+
+    refreshed = do_import(alice, refresh=True).json()["recipe"]
+
+    assert refreshed["id"] == first["id"]
+    assert refreshed["import_method"] == "microdata"
 
 
 # --- the same link again ---
@@ -197,7 +222,7 @@ def error_of(response):
 
 
 def test_page_without_json_ld_recipe_is_a_clear_422(alice, fake):
-    fake.pages = {URL: MICRODATA, URL + "-2": ARTICLE}
+    fake.pages = {URL: NO_MARKUP, URL + "-2": ARTICLE}
 
     for url in (URL, URL + "-2"):
         response = do_import(alice, url=url)
