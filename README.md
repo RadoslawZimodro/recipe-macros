@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 7 (food log). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 8 (pantry). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -166,6 +166,83 @@ WHERE n.logged_at >= CAST(b.d_from AS timestamp) AT TIME ZONE :tz
   and one where nothing can be computed has `nutrition: null` rather than a false zero.
   Rounding is .x5 up, as on a label; day totals are rounded after summing, so the rounded entries
   may differ from the total by 0.1.
+
+## Pantry
+
+"What can I cook with what I have?" The user lists the products they have and gets their recipes
+sorted by the share of ingredients they already own, with what is missing.
+
+| Endpoint | Purpose |
+|---|---|
+| `PUT /pantry/{ingredient_id}` / `DELETE /pantry/{ingredient_id}` | Put a product in the pantry / take it out (adding is idempotent) |
+| `GET /pantry` | The products the user has |
+| `GET /staples` | "Always at home": the default names (water, salt, pepper) and the user's own |
+| `PUT /staples/{ingredient_id}` / `DELETE ...` | Mark / unmark one of your own products as always at home |
+| `GET /pantry/recipes?min_percent=0&limit=20` | Recipes, best match first |
+
+```json
+[
+  {"recipe_id": 3, "title": "Naleśniki", "lines_total": 4, "lines_have": 4, "percent": 100.0, "missing": []},
+  {"recipe_id": 5, "title": "Placki", "lines_total": 4, "lines_have": 2, "percent": 50.0,
+   "missing": [{"line_id": 17, "raw_text": "100 g masła", "unlinked": false},
+               {"line_id": 18, "raw_text": "1 łyżka cukru", "unlinked": false}]}
+]
+```
+
+How the match is decided (all of it in one query, [`pantry_match.sql`](backend/app/sql/pantry_match.sql)):
+
+- **By product name, not by id.** A required line counts as available when its product has the same
+  name (case-insensitive) as a product in the pantry, in the user's staples, or in the default list.
+  The user's own "mąka" and the catalog's "mąka" are therefore the same flour, as in the nutrition view.
+- **Optional lines are left out** of the percentage. A recipe with no required lines is not listed.
+- **A line without a linked product counts as missing** and is marked `unlinked`: it can never match,
+  and ignoring it would make a half-understood recipe look perfect.
+- **Staples never count as missing.** The default names live in the table `default_staples` (names,
+  not ids, because recipes are matched by name and the catalog may lack one of them). The user adds
+  their own (oil, sugar) to `staple_ingredients`. An empty pantry therefore still matches the salt.
+- **Ties** are broken by the number of missing ingredients (fewer first), then by title.
+
+The query is a chain of CTEs: `have` (a `UNION` of the three lists into a set of names),
+`required_lines` (recipe lines joined with the products and the set), and `scored`, which aggregates
+per recipe with `count(*) FILTER (WHERE ...)` and builds the list of missing lines with
+`jsonb_agg(...) FILTER (WHERE NOT have_it)`:
+
+```sql
+count(*) FILTER (WHERE have_it) AS lines_have,
+jsonb_agg(jsonb_build_object('line_id', line_id, 'raw_text', raw_text, 'unlinked', unlinked)
+          ORDER BY position) FILTER (WHERE NOT have_it) AS missing
+```
+
+**`EXPLAIN (ANALYZE)` on synthetic data** (2000 recipes with 8 lines each, 7 of them required, 15
+products in the pantry; run as `app_user`, so Row-Level Security filters are part of the plan; the
+data was rolled back afterwards):
+
+```
+Limit (actual rows=20)
+  -> Sort (top-N heapsort, Memory: 46kB)
+       -> GroupAggregate  Group Key: r.id (actual rows=2000)
+            -> Sort  Sort Key: r.id (14000 rows, quicksort, 1196kB)
+                 -> Hash Left Join  (lower(i.canonical_name) = lower(i_1.canonical_name))
+                      -> Hash Left Join  (ri.ingredient_id = i.id)
+                           -> Hash Join  (ri.recipe_id = r.id)
+                                -> Seq Scan on recipe_ingredients ri  (Filter: NOT is_optional AND user_id = ...)
+                                -> Hash <- Seq Scan on recipes r      (Filter: deleted_at IS NULL AND user_id = ...)
+                           -> Hash <- Seq Scan on ingredients i
+                      -> Hash <- HashAggregate (the `have` set: 16 names)
+Execution Time: 57.8 ms   (everything in memory: shared hit=169)
+```
+
+What to say about it: every recipe has to be scored, so the user's recipe lines are read once
+whatever indexes exist; the planner hashes the small tables (products, the set of names the user has) and
+joins them in a single pass, which is linear in the number of lines (about 14,000 lines in 58 ms).
+The only index used is the unique index on `staple_ingredients (user_id, ingredient_id)`, which also
+enforces "one row per product". `LIMIT` only saves sorting, not reading, because the order depends on
+the score of every recipe. If the numbers grew by orders of magnitude the next step would be
+precomputing the names of each recipe's required lines, not another index.
+
+Both lists are protected like the food log: Row-Level Security on `user_id`, with a `WITH CHECK`
+that the product is visible to the user (a foreign key alone would accept someone else's private id).
+Substitutes (butter for margarine) are intentionally left for later.
 
 ## Import from a link
 
@@ -437,6 +514,10 @@ erDiagram
     units ||--o{ unit_conversions : "for"
     users ||--o{ food_logs : records
     recipes |o--o{ food_logs : "eaten as"
+    users ||--o{ pantry_items : has
+    users ||--o{ staple_ingredients : "always has"
+    ingredients ||--o{ pantry_items : "in"
+    ingredients ||--o{ staple_ingredients : "in"
     ingredients |o--o{ food_logs : "eaten as"
 
     users {
@@ -446,6 +527,21 @@ erDiagram
         bool is_active
         int daily_kcal_goal "NULL = not set"
         int daily_protein_goal
+    }
+    pantry_items {
+        int id PK
+        int user_id FK "RLS; UNIQUE with ingredient_id"
+        int ingredient_id FK
+        timestamptz added_at
+    }
+    staple_ingredients {
+        int id PK
+        int user_id FK "RLS; UNIQUE with ingredient_id"
+        int ingredient_id FK
+        timestamptz added_at
+    }
+    default_staples {
+        text name PK "water, salt, pepper; read-only"
     }
     food_logs {
         int id PK
