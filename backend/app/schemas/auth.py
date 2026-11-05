@@ -47,3 +47,12 @@ class UserOut(BaseModel):
     email: EmailStr
     is_active: bool
     created_at: datetime
+    daily_kcal_goal: int | None
+    daily_protein_goal: int | None
+
+
+class GoalsIn(BaseModel):
+    """Daily targets. A field that is left out stays as it is; null clears it."""
+
+    daily_kcal_goal: int | None = Field(None, ge=500, le=10000)
+    daily_protein_goal: int | None = Field(None, ge=1, le=1000)

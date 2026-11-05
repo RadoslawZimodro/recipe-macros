@@ -174,7 +174,7 @@ commit + push, zaznaczenie `[x]` poniżej.
   (USDA FoodData Central, wcześniej planowany Open Food Facts, i/lub ręczne), makro przepisu i na porcję, oznaczanie źródła wartości,
   ręczna korekta.
   Kryterium: testy rachunkowe, endpoint zwraca makro z flagą szacunku.
-- [ ] **Krok 7: Dziennik dnia**
+- [x] **Krok 7: Dziennik dnia**
   `food_logs`, logowanie porcji przepisu lub produktu, suma dnia (SQL), porównanie z celem.
   Kryterium: zapytania agregujące w czytelnym SQL, test na kilku dniach danych.
 - [ ] **Krok 8: Lodówka**

@@ -12,7 +12,17 @@ class User(Base):
     __tablename__ = "users"
     # The API lowercases emails; this makes Postgres enforce it too, so UNIQUE(email)
     # really is case-insensitive even for rows written outside the API.
-    __table_args__ = (CheckConstraint("email = lower(email)", name="email_lowercase"),)
+    __table_args__ = (
+        CheckConstraint("email = lower(email)", name="email_lowercase"),
+        CheckConstraint(
+            "daily_kcal_goal IS NULL OR daily_kcal_goal BETWEEN 500 AND 10000",
+            name="daily_kcal_goal_range",
+        ),
+        CheckConstraint(
+            "daily_protein_goal IS NULL OR daily_protein_goal BETWEEN 1 AND 1000",
+            name="daily_protein_goal_range",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
@@ -20,6 +30,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Daily targets (NULL = not set); the food log compares its day totals with them.
+    daily_kcal_goal: Mapped[int | None]
+    daily_protein_goal: Mapped[int | None]
 
 
 class RefreshToken(Base):
