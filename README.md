@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 8 (pantry). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 9 in progress (frontend: login and app shell done). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -13,7 +13,7 @@ fridge.
 | Backend | Python 3.12, FastAPI |
 | Database | PostgreSQL 18, SQLAlchemy 2 (sync, psycopg 3) + raw SQL, Alembic migrations |
 | Cache | Redis 7 |
-| Frontend | React + TypeScript (Vite), Tailwind CSS v4 |
+| Frontend | React 19 + TypeScript (Vite), Tailwind CSS v4, React Router, TanStack Query, Vitest |
 | LLM | Anthropic API (backend only) |
 | Tooling | Docker Compose, pytest, ruff, pre-commit |
 
@@ -45,6 +45,8 @@ docker compose exec backend ruff check . && docker compose exec backend ruff for
 docker compose exec backend alembic upgrade head                     # migrations (also run on startup)
 docker compose exec backend alembic revision --autogenerate -m "..."  # new migration
 docker compose exec db psql -U postgres -d recipe_macros             # SQL shell
+docker compose exec frontend npm test                                # frontend tests (Vitest)
+docker compose exec frontend sh -c "npx tsc -b && npm run lint"      # types + lint
 ```
 
 ### Pre-commit (on the host)
@@ -53,6 +55,27 @@ docker compose exec db psql -U postgres -d recipe_macros             # SQL shell
 pip install pre-commit   # or: pipx install pre-commit
 pre-commit install
 ```
+
+## Frontend
+
+The interface is in Polish (code and comments stay in English) and follows the system's light or
+dark setting (Tailwind's `dark:` variant uses `prefers-color-scheme`). It is built in parts, each its
+own pull request: login and app shell (done), recipes and import, the day log with a chart, the
+pantry.
+
+- **Session.** The API keeps the session in HttpOnly cookies, so the browser sends them with
+  `credentials: 'include'` and the JavaScript never sees a token. State-changing requests echo the
+  readable `csrf_token` cookie into the `X-CSRF-Token` header (double-submit CSRF).
+- **Silent refresh.** The access token lives 15 minutes. On a `401` the client calls
+  `/auth/refresh` once, with a single refresh in flight at a time (two parallel refreshes would
+  look like a replayed token to the server), and repeats the request. Only if that fails is the
+  user logged out and the cache cleared, so one user's data is never shown to the next. The login
+  and `/auth/me` requests are exempt: for them a `401` is an answer, not an expired session.
+- **Data.** TanStack Query for server state (`/auth/me` decides who is logged in); no global store.
+- **Messages.** The API's errors are English; `describeError` turns the common statuses into Polish
+  and appends the API's own detail only where it is specific (for example the password rule).
+- **Tests.** Vitest + Testing Library with a mocked `fetch`: the client (CSRF header, refresh,
+  no loops, error parsing) and the login/register flows (wrong password, taken email, redirects).
 
 ## Authentication
 
