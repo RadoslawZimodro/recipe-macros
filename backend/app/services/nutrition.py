@@ -23,14 +23,19 @@ from app.schemas.nutrition import (
 from app.services.sql import load_sql
 
 
-def _round(value) -> float:
+def round_half_up(value) -> float:
     """One decimal, rounding .x5 UP like a nutrition label (Python's round() would turn 2.25 into
     2.2). Going through Decimal avoids binary floating-point surprises."""
     return float(Decimal(str(value)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
 
 
-def _macros(kcal, protein, fat, carbs) -> Macros:
-    return Macros(kcal=_round(kcal), protein=_round(protein), fat=_round(fat), carbs=_round(carbs))
+def to_macros(kcal, protein, fat, carbs) -> Macros:
+    return Macros(
+        kcal=round_half_up(kcal),
+        protein=round_half_up(protein),
+        fat=round_half_up(fat),
+        carbs=round_half_up(carbs),
+    )
 
 
 def get_nutrition(session: Session, recipe_id: int, *, include_optional: bool) -> NutritionOut:
@@ -70,10 +75,10 @@ def get_nutrition(session: Session, recipe_id: int, *, include_optional: bool) -
                 else ProductRef(
                     id=row["product_id"], name=row["product_name"], source=row["macro_source"]
                 ),
-                grams=None if row["grams"] is None else _round(row["grams"]),
+                grams=None if row["grams"] is None else round_half_up(row["grams"]),
                 weight_source=row["weight_source"],
                 is_estimate=row["is_estimate"] if computed else None,
-                nutrition=_macros(row["kcal"], row["protein"], row["fat"], row["carbs"])
+                nutrition=to_macros(row["kcal"], row["protein"], row["fat"], row["carbs"])
                 if computed
                 else None,
                 problem=problem,
@@ -90,9 +95,9 @@ def get_nutrition(session: Session, recipe_id: int, *, include_optional: bool) -
                 )
             )
 
-    total = _macros(head["kcal"], head["protein"], head["fat"], head["carbs"])
+    total = to_macros(head["kcal"], head["protein"], head["fat"], head["carbs"])
     servings = head["servings"]
-    per_serving = _macros(
+    per_serving = to_macros(
         float(head["kcal"]) / servings,
         float(head["protein"]) / servings,
         float(head["fat"]) / servings,

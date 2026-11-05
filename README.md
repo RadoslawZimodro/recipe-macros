@@ -4,7 +4,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 6 (macronutrients). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Step 7 (food log). See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 
@@ -64,7 +64,8 @@ Email + password accounts, no email confirmation. Interactive docs: http://local
 | `POST /auth/login` | Verify credentials and start a session (rate limited per IP) |
 | `POST /auth/refresh` | Rotate the refresh token, issue a new access token |
 | `POST /auth/logout` | Revoke the refresh token and clear cookies |
-| `GET /auth/me` | Current user; `401` without a valid session |
+| `GET /auth/me` | Current user, with the daily goals; `401` without a valid session |
+| `PATCH /auth/me/goals` | Set or clear the daily kcal / protein goals (`null` clears one) |
 
 Design decisions:
 
@@ -108,6 +109,63 @@ Everything below needs a session; `POST`/`PUT`/`DELETE` also need the `X-CSRF-To
 
 Other users' recipes return `404`, not `403`, so their existence is not revealed.
 Nutrition values are estimates and carry a `source` (`usda`, `manual`, `llm_estimate`).
+
+## Food log
+
+The user records what they ate and the API sums up the day and compares it with the goals
+(`PATCH /auth/me/goals`: `daily_kcal_goal` 500-10000, `daily_protein_goal` 1-1000, both optional).
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /food-log` | Record `{"recipe_id", "servings"}` **or** `{"ingredient_id", "grams"}` (exactly one kind), optionally `logged_at` (with a time zone; default now) |
+| `GET /food-log?date=2026-03-11` | Entries of one day, the day's totals and the comparison with the goals (default: today) |
+| `GET /food-log/days?from=...&to=...` | Totals per day for up to 366 days, days without entries included (for a chart) |
+| `DELETE /food-log/{id}` | Remove an entry |
+
+```json
+{
+  "timezone": "Europe/Warsaw",
+  "totals": {
+    "day": "2026-03-11", "entries": 1, "is_estimate": false, "complete": true,
+    "total":   {"kcal": 540.0, "protein": 10.5, "fat": 1.5, "carbs": 120.0},
+    "kcal":    {"goal": 2000, "eaten": 540.0, "remaining": 1460.0, "percent": 27.0},
+    "protein": {"goal": 100,  "eaten": 10.5,  "remaining": 89.5,   "percent": 10.5}
+  },
+  "entries": [{"id": 4, "kind": "product", "name": "ryż", "grams": 150.0, "complete": true,
+               "nutrition": {"kcal": 540.0, "protein": 10.5, "fat": 1.5, "carbs": 120.0}}]
+}
+```
+
+Decisions, each with its reason:
+
+- **Only the fact is stored, never the macros.** A row says "recipe 5, 2 servings" or "product 7,
+  150 g"; the view `food_log_nutrition` works the numbers out on every read from the recipe and
+  product data of the moment. A corrected line weight or product therefore corrects the history as
+  well (same idea as the recipe nutrition). A soft-deleted recipe keeps counting. The price: an
+  old day changes when the data behind it changes.
+- **Exactly one kind of entry** is a `CHECK` constraint (`ck_food_logs_exactly_one_source`), not
+  only an API rule: no insert, whoever makes it, can store both or neither.
+- **A "day" is a calendar day in Polish time**, not in UTC. Timestamps are `timestamptz` (an
+  instant); an entry at 00:30 Polish time is the new day although it is still the previous evening
+  in UTC. The time zone rules, including summer time, come from PostgreSQL (`AT TIME ZONE`).
+- **The day filter compares `logged_at` with the day's boundaries** instead of casting it to a date,
+  so the index `(user_id, logged_at)` serves it as a range scan:
+
+```sql
+WHERE n.logged_at >= CAST(b.d_from AS timestamp) AT TIME ZONE :tz
+  AND n.logged_at <  CAST(b.d_to + 1 AS timestamp) AT TIME ZONE :tz
+```
+
+- **Days without entries come from `generate_series`**, and the totals are joined to that series
+  (`food_log_days.sql`, a CTE): a chart needs the empty days, a plain `GROUP BY` would drop them.
+- **Row-Level Security with an extra check.** Besides `user_id = app_current_user_id()`, the policy's
+  `WITH CHECK` demands that the recipe / product is visible to the user, because a foreign key alone
+  would accept someone else's private id (tested with raw SQL as `app_user`).
+- **Honest numbers.** An entry says whether it `is_estimate` (some part is an AI guess) and whether it
+  is `complete`; a recipe whose lines could not all be computed counts what is known and is flagged,
+  and one where nothing can be computed has `nutrition: null` rather than a false zero.
+  Rounding is .x5 up, as on a label; day totals are rounded after summing, so the rounded entries
+  may differ from the total by 0.1.
 
 ## Import from a link
 
@@ -377,12 +435,26 @@ erDiagram
     units |o--o{ recipe_ingredients : "measured in"
     ingredients ||--o{ unit_conversions : "weights of"
     units ||--o{ unit_conversions : "for"
+    users ||--o{ food_logs : records
+    recipes |o--o{ food_logs : "eaten as"
+    ingredients |o--o{ food_logs : "eaten as"
 
     users {
         int id PK
         text email UK "lower-case CHECK"
         text password_hash
         bool is_active
+        int daily_kcal_goal "NULL = not set"
+        int daily_protein_goal
+    }
+    food_logs {
+        int id PK
+        int user_id FK "RLS; index with logged_at"
+        timestamptz logged_at
+        int recipe_id FK "with servings"
+        numeric servings
+        int ingredient_id FK "with grams"
+        numeric grams "CHECK: exactly one kind"
     }
     recipes {
         int id PK
@@ -456,7 +528,7 @@ Design decisions:
 - **Shared catalog + private products.** `ingredients.user_id IS NULL` marks the shared catalog
   (read-only for the API, filled by scripts later); users add private products. Names are unique
   per scope through two partial unique indexes on `lower(canonical_name)`.
-- **Soft delete.** `deleted_at` keeps the row so the food log (Step 7) can still compute macros
+- **Soft delete.** `deleted_at` keeps the row so the food log can still compute macros
   for old entries. The unique index on `(user_id, source_url)` is partial (`WHERE source_url IS NOT
   NULL AND deleted_at IS NULL`), so a deleted recipe can be imported again.
 - **Units dictionary** (`units`) with a foreign key instead of free text; an unrecognised unit is

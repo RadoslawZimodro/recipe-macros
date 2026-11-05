@@ -27,9 +27,10 @@ from app.dependencies import (
     REFRESH_COOKIE,
     REFRESH_COOKIE_PATH,
     get_current_user,
+    require_csrf,
 )
 from app.models import RefreshToken, User
-from app.schemas.auth import UserLogin, UserOut, UserRegister
+from app.schemas.auth import GoalsIn, UserLogin, UserOut, UserRegister
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -237,4 +238,17 @@ def logout(
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)) -> User:
     """Return the currently authenticated account."""
+    return current_user
+
+
+@router.patch("/me/goals", response_model=UserOut, dependencies=[Depends(require_csrf)])
+def set_goals(
+    goals: GoalsIn,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Set or clear the daily kcal / protein targets used by the food log."""
+    for field, value in goals.model_dump(exclude_unset=True).items():
+        setattr(current_user, field, value)
+    session.commit()
     return current_user
