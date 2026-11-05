@@ -86,12 +86,13 @@ albo jako polecenia CLI (`python -m app.scripts.<nazwa>`).
 - Repozytorium publiczne, więc **nigdy nie commituj sekretów**. `.env` jest w `.gitignore`,
   w repo jest tylko `.env.example` z pustymi wartościami. Przed pierwszym pushem sprawdź
   `git status` i `git diff --cached` pod kątem kluczy.
-- Gałąź główna: `main`. Praca na krótkich gałęziach `feat/<opis>`, `fix/<opis>`,
-  scalanie do `main` po zakończeniu kroku.
+- Gałąź główna: `main`. Praca na krótkich gałęziach `feat/<opis>`, `fix/<opis>`.
+  Od Kroku 8 każdy krok kończy się **Pull Requestem do `main`** (`gh pr create`), który
+  scala autor, nie agent. Kroki 0-7 zostały scalone bezpośrednio.
 - Commity w stylu Conventional Commits, po angielsku: `feat: add recipe import endpoint`,
   `fix: handle missing yield in parser`, `docs: update README`. Jeden commit = jedna
   logiczna zmiana. Migracja Alembic idzie w tym samym commicie co zmiana modelu.
-- Po zakończeniu każdego kroku z planu: `git push`.
+- Po zakończeniu każdego kroku z planu: `git push` gałęzi kroku i otwarcie PR.
 - README ma być na bieżąco: opis projektu, jak uruchomić (`docker compose up`), diagram
   schematu bazy, przykładowe zapytania SQL z wyjaśnieniem. To wizytówka w CV.
 - Do tworzenia repo na GitHubie użyj `gh` (GitHub CLI), jeśli jest zalogowane
@@ -177,7 +178,7 @@ commit + push, zaznaczenie `[x]` poniżej.
 - [x] **Krok 7: Dziennik dnia**
   `food_logs`, logowanie porcji przepisu lub produktu, suma dnia (SQL), porównanie z celem.
   Kryterium: zapytania agregujące w czytelnym SQL, test na kilku dniach danych.
-- [ ] **Krok 8: Lodówka**
+- [x] **Krok 8: Lodówka**
   `pantry_items`, `staple_ingredients`, zapytanie o dopasowanie (% składników, braki,
   sortowanie), opcjonalnie zamienniki.
   Kryterium: testy dopasowania, `EXPLAIN` zapytania opisany w README.
