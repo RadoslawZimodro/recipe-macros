@@ -43,7 +43,7 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-claude-haiku-5-5}
       JWT_SECRET: ${JWT_SECRET:-dev-insecure-secret-do-not-use-in-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5180}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:${FRONTEND_HOST_PORT:-5180}}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       # Bind mounts on Windows do not propagate file events, so the reloader has to poll.
       WATCHFILES_FORCE_POLLING: "true"
@@ -64,9 +64,13 @@ services:
     build:
       context: ./frontend
     command: npm run dev -- --host
+    environment:
+      # Read by vite.config.ts; the browser calls the API on the backend's host port.
+      FRONTEND_PORT: ${FRONTEND_HOST_PORT:-5180}
+      VITE_API_URL: http://localhost:${BACKEND_HOST_PORT:-8010}
     ports:
       # Same port inside and outside: the Vite HMR client connects to the page's port.
-      - "5180:5180"
+      - "${FRONTEND_HOST_PORT:-5180}:${FRONTEND_HOST_PORT:-5180}"
     volumes:
       - ./frontend:/app
       - /app/node_modules  # keep dependencies from the image, do not shadow them with the host
