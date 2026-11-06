@@ -76,6 +76,11 @@ pantry.
 - **Data.** TanStack Query for server state (`/auth/me` decides who is logged in); no global store.
 - **Messages.** The API's errors are English; `describeError` turns the common statuses into Polish
   and appends the API's own detail only where it is specific (for example the password rule).
+- **Recipes.** `/recipes` (search, paging), `/recipes/import` (import from a link; it can take
+  tens of seconds, so the form shows progress, and the API's stable error codes become Polish
+  messages, e.g. for Instagram/TikTok/YouTube) and `/recipes/:id` (ingredients, steps, link to
+  the original, macros total and per serving always labelled "szacunek" with the data sources,
+  manual correction of an ingredient's weight, delete).
 - **Tests.** Vitest + Testing Library with a mocked `fetch`: the client (CSRF header, refresh,
   no loops, error parsing) and the login/register flows (wrong password, taken email, redirects).
 

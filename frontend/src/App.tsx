@@ -3,6 +3,9 @@ import { Layout } from './components/Layout'
 import { RedirectIfAuthenticated, RequireAuth } from './components/RequireAuth'
 import { LoginPage, RegisterPage } from './pages/AuthPages'
 import { HomePage } from './pages/HomePage'
+import { RecipeDetailPage } from './pages/recipes/RecipeDetailPage'
+import { RecipeImportPage } from './pages/recipes/RecipeImportPage'
+import { RecipeListPage } from './pages/recipes/RecipeListPage'
 
 function App() {
   return (
@@ -14,6 +17,9 @@ function App() {
         </Route>
         <Route element={<RequireAuth />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/recipes" element={<RecipeListPage />} />
+          <Route path="/recipes/import" element={<RecipeImportPage />} />
+          <Route path="/recipes/:id" element={<RecipeDetailPage />} />
         </Route>
         <Route path="*" element={<p>Nie znaleziono strony.</p>} />
       </Route>
