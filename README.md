@@ -33,8 +33,10 @@ docker compose up --build
 | Health check | http://localhost:8010/health |
 | PostgreSQL | `localhost:5440` (user/password `postgres` by default) |
 
-Host ports are chosen not to clash with the author's other local projects; DB and API ports
-can be changed in `.env` (`DB_HOST_PORT`, `BACKEND_HOST_PORT`).
+Host ports are chosen not to clash with the author's other local projects; all of them can be
+changed in `.env` (`DB_HOST_PORT`, `BACKEND_HOST_PORT`, `FRONTEND_HOST_PORT`). With a different
+`COMPOSE_PROJECT_NAME` as well, a second stack (e.g. from a git worktree) runs side by side with
+its own database volume; the frontend follows the backend port automatically.
 Both backend and frontend reload automatically when you edit code.
 
 ### Common commands
