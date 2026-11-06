@@ -16,6 +16,9 @@ export function Layout() {
               <Link to="/recipes" className="hover:underline">
                 Przepisy
               </Link>
+              <Link to="/log" className="hover:underline">
+                Dziennik
+              </Link>
             </nav>
           )}
           {user && (
