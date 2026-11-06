@@ -81,6 +81,9 @@ pantry.
   messages, e.g. for Instagram/TikTok/YouTube) and `/recipes/:id` (ingredients, steps, link to
   the original, macros total and per serving always labelled "szacunek" with the data sources,
   manual correction of an ingredient's weight, delete).
+- **Pantry.** `/pantry` lets you add products through a search box (`GET /ingredients?q=`), mark
+  products as always at home (`/staples`) and shows recipes sorted by how many required
+  ingredients you have, with the missing lines and a link to the recipe.
 - **Tests.** Vitest + Testing Library with a mocked `fetch`: the client (CSRF header, refresh,
   no loops, error parsing) and the login/register flows (wrong password, taken email, redirects).
 - **Day log (`/log`).** Pick a date, add servings of a recipe or grams of a product (search by name),

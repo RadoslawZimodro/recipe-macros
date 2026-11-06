@@ -19,6 +19,9 @@ export function Layout() {
               <Link to="/log" className="hover:underline">
                 Dziennik
               </Link>
+              <Link to="/pantry" className="hover:underline">
+                Lodówka
+              </Link>
             </nav>
           )}
           {user && (
