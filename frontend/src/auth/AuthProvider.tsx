@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react'
 import { api, ApiError, setSessionLostHandler } from '../api/client'
 import type { User } from '../api/types'
+import { ME_KEY } from './meKey'
 
 interface Credentials {
   email: string
@@ -17,8 +18,6 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null)
-
-const ME_KEY = ['me'] as const
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()

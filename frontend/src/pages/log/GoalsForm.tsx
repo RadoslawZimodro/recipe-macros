@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { foodLogKeys, setGoals } from '../../api/foodLog'
 import { describeError } from '../../api/messages'
+import { ME_KEY } from '../../auth/meKey'
 import { useAuth } from '../../auth/AuthProvider'
 import { ErrorMessage, Field } from '../../components/Field'
 
@@ -27,7 +28,7 @@ function GoalsFields({ kcalGoal, proteinGoal }: { kcalGoal: number | null; prote
     mutationFn: () =>
       setGoals({ daily_kcal_goal: toNumber(kcal), daily_protein_goal: toNumber(protein) }),
     onSuccess: (updated) => {
-      queryClient.setQueryData(['me'], updated)
+      queryClient.setQueryData(ME_KEY, updated)
       return queryClient.invalidateQueries({ queryKey: foodLogKeys.all })
     },
   })
