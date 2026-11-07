@@ -9,7 +9,7 @@ import {
   type PantryItem,
 } from '../../api/pantry'
 import { describeError } from '../../api/messages'
-import { IngredientPicker } from './IngredientPicker'
+import { IngredientSearch } from '../../components/IngredientSearch'
 
 function Status({
   query,
@@ -80,7 +80,7 @@ export function PantrySection() {
       <h2 id="pantry-heading" className="text-xl font-semibold">
         Moje produkty
       </h2>
-      <IngredientPicker
+      <IngredientSearch
         label="Dodaj produkt"
         excludeIds={items.map((item) => item.ingredient_id)}
         disabled={add.isPending}
@@ -133,7 +133,7 @@ export function StaplesSection() {
       <p className="text-sm text-slate-600 dark:text-slate-300">
         Te produkty (np. sól, woda) liczą się jako dostępne w każdym przepisie.
       </p>
-      <IngredientPicker
+      <IngredientSearch
         label="Dodaj do „zawsze w domu”"
         excludeIds={own.map((item) => item.ingredient_id)}
         disabled={add.isPending}
