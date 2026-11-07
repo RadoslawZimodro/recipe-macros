@@ -7,6 +7,7 @@ import { RecipeDetailPage } from './pages/recipes/RecipeDetailPage'
 import { RecipeImportPage } from './pages/recipes/RecipeImportPage'
 import { RecipeListPage } from './pages/recipes/RecipeListPage'
 import { LogPage } from './pages/log/LogPage'
+import { PantryPage } from './pages/pantry/PantryPage'
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path="/recipes/import" element={<RecipeImportPage />} />
           <Route path="/recipes/:id" element={<RecipeDetailPage />} />
           <Route path="/log" element={<LogPage />} />
+          <Route path="/pantry" element={<PantryPage />} />
         </Route>
         <Route path="*" element={<p>Nie znaleziono strony.</p>} />
       </Route>
