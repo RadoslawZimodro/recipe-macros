@@ -23,6 +23,20 @@ const SOURCE_LABELS: Record<Source, string> = {
   llm_estimate: 'szacunek AI',
 }
 
+// No retries on 4xx (a missing recipe stays missing); transient errors get two retries.
+function retryUnlessNotFound(count: number, error: Error) {
+  return !(error instanceof ApiError && error.status >= 400 && error.status < 500) && count < 2
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 const nf = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 1 })
 
 function MacroBox({ title, macros }: { title: string; macros: Macros }) {
@@ -39,7 +53,10 @@ function MacroBox({ title, macros }: { title: string; macros: Macros }) {
 }
 
 function NutritionSection({ id }: { id: number }) {
-  const nutrition = useQuery({ queryKey: ['recipes', 'nutrition', id], queryFn: () => getNutrition(id) })
+  const nutrition = useQuery({
+    queryKey: ['recipes', 'nutrition', id], queryFn: () => getNutrition(id),
+    retry: retryUnlessNotFound,
+  })
 
   return (
     <section className="space-y-3" aria-labelledby="nutrition-heading">
@@ -111,22 +128,35 @@ function IngredientRow({
 }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(line.grams === null ? '' : String(line.grams))
+  const initialValue = line.grams === null ? '' : String(line.grams)
+  const [value, setValue] = useState(initialValue)
+  const [inputError, setInputError] = useState<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: (grams: number | null) => patchIngredientGrams(recipeId, line.id, grams),
     onSuccess: async (recipe) => {
       queryClient.setQueryData(['recipes', recipeId], recipe)
       await queryClient.invalidateQueries({ queryKey: ['recipes', 'nutrition', recipeId] })
+      setInputError(null)
       setEditing(false)
     },
   })
+
+  function cancel() {
+    setValue(initialValue)
+    setInputError(null)
+    setEditing(false)
+  }
 
   function save(event: FormEvent) {
     event.preventDefault()
     const text = value.trim().replace(',', '.')
     const grams = text === '' ? null : Number(text)
-    if (grams !== null && (!Number.isFinite(grams) || grams < 0)) return
+    if (grams !== null && (!Number.isFinite(grams) || grams < 0)) {
+      setInputError('Podaj liczbę gramów większą lub równą 0.')
+      return
+    }
+    setInputError(null)
     mutation.mutate(grams)
   }
 
@@ -167,12 +197,17 @@ function IngredientRow({
           </button>
           <button
             type="button"
-            onClick={() => setEditing(false)}
+            onClick={cancel}
             className="rounded-md border border-slate-300 px-3 py-1 text-sm dark:border-slate-600"
           >
             Anuluj
           </button>
           <span className="text-xs text-slate-500">Puste pole przywraca wagę wyliczoną automatycznie.</span>
+          {inputError && (
+            <div className="w-full">
+              <ErrorMessage message={inputError} />
+            </div>
+          )}
           {mutation.isError && (
             <div className="w-full">
               <ErrorMessage message={describeError(mutation.error)} />
@@ -206,22 +241,22 @@ export function RecipeDetailPage() {
     queryKey: ['recipes', id],
     queryFn: () => getRecipe(id),
     enabled: Number.isInteger(id) && id > 0,
-    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
+    retry: retryUnlessNotFound,
   })
   // Shares the cache entry with NutritionSection; used here to show the computed weights.
   const nutrition = useQuery({
     queryKey: ['recipes', 'nutrition', id],
     queryFn: () => getNutrition(id),
     enabled: recipe.isSuccess,
+    retry: retryUnlessNotFound,
   })
 
   const remove = useMutation({
     mutationFn: () => deleteRecipe(id),
     onSuccess: async () => {
-      queryClient.removeQueries({ queryKey: ['recipes', id] })
-      queryClient.removeQueries({ queryKey: ['recipes', 'nutrition', id] })
-      await queryClient.invalidateQueries({ queryKey: ['recipes'] })
       void navigate('/recipes')
+      // Mark stale without refetching: the deleted recipe's mounted queries would 404.
+      await queryClient.invalidateQueries({ queryKey: ['recipes'], refetchType: 'none' })
     },
   })
 
@@ -260,7 +295,7 @@ export function RecipeDetailPage() {
           {data.prep_time_min !== null && ` · Przygotowanie: ${data.prep_time_min} min`}
           {data.cook_time_min !== null && ` · Gotowanie: ${data.cook_time_min} min`}
         </p>
-        {data.source_url && (
+        {data.source_url && isHttpUrl(data.source_url) && (
           <p className="text-sm">
             <a
               href={data.source_url}

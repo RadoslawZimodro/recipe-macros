@@ -11,7 +11,7 @@ export function RecipeListPage() {
   const [offset, setOffset] = useState(0)
 
   const list = useQuery({
-    queryKey: ['recipes', q, offset],
+    queryKey: ['recipes', 'list', q, offset],
     queryFn: () => listRecipes(q, offset),
   })
 

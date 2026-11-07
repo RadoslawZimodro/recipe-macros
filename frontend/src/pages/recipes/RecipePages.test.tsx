@@ -297,6 +297,45 @@ describe('recipe details', () => {
     expect(screen.getByText(/\(ręcznie\)/)).toBeInTheDocument()
   })
 
+  it('rejects an invalid weight locally and resets the text on cancel', async () => {
+    let patchCalls = 0
+    serve({
+      ...AUTH,
+      'GET /recipes/7': () => reply(200, RECIPE),
+      'GET /recipes/7/nutrition': () => reply(200, NUTRITION),
+      'PATCH /recipes/7/ingredients/11': () => {
+        patchCalls += 1
+        return reply(200, RECIPE)
+      },
+    })
+    renderAt('/recipes/7')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Popraw wagę: 2 jajka' }))
+    const input = screen.getByLabelText(/Waga w gramach/)
+    await userEvent.clear(input)
+    await userEvent.type(input, 'abc')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Podaj liczbę gramów')
+    expect(patchCalls).toBe(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Anuluj' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Popraw wagę: 2 jajka' }))
+    expect(screen.getByLabelText(/Waga w gramach/)).toHaveValue('')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('renders no link for a non-http source_url', async () => {
+    serve({
+      ...AUTH,
+      'GET /recipes/7': () => reply(200, { ...RECIPE, source_url: 'javascript:alert(1)' }),
+      'GET /recipes/7/nutrition': () => reply(200, NUTRITION),
+    })
+    renderAt('/recipes/7')
+
+    expect(await screen.findByRole('heading', { name: 'Szakszuka' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Zobacz oryginalny przepis' })).not.toBeInTheDocument()
+  })
+
   it('deletes a recipe after confirmation and returns to the list', async () => {
     let deleted = false
     serve({
