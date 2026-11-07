@@ -101,6 +101,8 @@ export function addDays(day: string, delta: number): string {
 /**
  * The logged_at to send for a day. Today: undefined (the server uses "now"). Another day: noon
  * at +01:00, which falls on the same Polish calendar day in winter and summer time alike.
+ * Noon +01:00 is 11:00 UTC, i.e. 12:00 (winter, UTC+1) or 13:00 (summer, UTC+2) in Warsaw, so
+ * it never crosses midnight, including on the DST change days.
  */
 export function loggedAtFor(day: string): string | undefined {
   return day === todayInPoland() ? undefined : `${day}T12:00:00+01:00`

@@ -77,6 +77,7 @@ function reply(status: number, body?: unknown): Response {
 const fetchMock = vi.fn<typeof fetch>()
 let entries: FoodLogEntry[]
 let user: typeof USER
+let recipesTotal: number
 
 function dayFor(day: string): DayOut {
   const list = day === TODAY ? entries : []
@@ -109,7 +110,7 @@ function serve() {
     if (key === 'GET /recipes') {
       return reply(200, {
         items: [{ id: 3, title: 'Pizza', servings: 4, tags: [], source_url: null }],
-        total: 1,
+        total: recipesTotal,
         limit: 100,
         offset: 0,
       })
@@ -184,6 +185,7 @@ function renderPage() {
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
   entries = [PIZZA]
+  recipesTotal = 1
   user = { ...USER }
   serve()
 })
@@ -249,6 +251,18 @@ describe('LogPage', () => {
       servings: 1.5,
     })
     expect(await screen.findByRole('link', { name: 'Pizza' })).toBeInTheDocument()
+  })
+
+  it('hints when the recipe picker shows only part of the recipes', async () => {
+    recipesTotal = 120
+    renderPage()
+    expect(await screen.findByText('Pokazano 1 z 120 przepisów.')).toBeInTheDocument()
+  })
+
+  it('does not show the hint when all recipes are listed', async () => {
+    renderPage()
+    await screen.findByLabelText('Przepis')
+    expect(screen.queryByText(/Pokazano/)).not.toBeInTheDocument()
   })
 
   it('adds grams of a product found by search', async () => {

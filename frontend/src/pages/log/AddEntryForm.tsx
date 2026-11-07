@@ -74,6 +74,11 @@ function RecipePicker({ day }: { day: string }) {
             </option>
           ))}
         </select>
+        {recipes.data.total > recipes.data.items.length && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Pokazano {recipes.data.items.length} z {recipes.data.total} przepisów.
+          </p>
+        )}
       </div>
       <Field
         id="log-servings"
