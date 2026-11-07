@@ -53,6 +53,3 @@ jobs:
         run: docker compose run --rm --no-deps frontend npm test
       - name: Build
         run: docker compose run --rm --no-deps frontend npm run build
-      - name: Tear down
-        if: always()
-        run: docker compose down -v
