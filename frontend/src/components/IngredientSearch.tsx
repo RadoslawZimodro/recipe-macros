@@ -5,11 +5,13 @@ import { describeError } from '../api/messages'
 import { useDebounced } from '../hooks/useDebounced'
 import { ErrorMessage, Field } from './Field'
 
+const NO_IDS: readonly number[] = []
+
 interface Props {
   label: string
   onPick: (ingredient: Ingredient) => void
   // Ids already added, so they are not offered again.
-  excludeIds?: number[]
+  excludeIds?: readonly number[]
   disabled?: boolean
   // Shown in the input instead of the typed text; typing again calls onClear.
   selected?: Ingredient | null
@@ -19,7 +21,7 @@ interface Props {
 }
 
 /** Product search: type a name, pick a result. Searches the API after a short pause in typing. */
-export function IngredientSearch({ label, onPick, excludeIds = [], disabled, selected, onClear, showKcal }: Props) {
+export function IngredientSearch({ label, onPick, excludeIds = NO_IDS, disabled, selected, onClear, showKcal }: Props) {
   const inputId = useId()
   const [text, setText] = useState('')
   const term = useDebounced(text.trim(), 250)
