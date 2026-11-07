@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# No .env in CI: empty values fall back to the dev defaults in docker-compose.yml, and
+# ANTHROPIC_API_KEY stays empty (tests mock the LLM). Same stack as local development.
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # ~800 tests with Argon2 hashing took 6.5 min on a loaded laptop
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker compose build backend
+      # `run` starts db + redis (healthy) and the entrypoint applies migrations first.
+      - name: ruff check
+        run: docker compose run --rm backend ruff check .
+      - name: ruff format --check
+        run: docker compose run --rm backend ruff format --check .
+      - name: pytest
+        run: docker compose run --rm backend pytest
+      - name: Backend logs
+        if: failure()
+        run: docker compose logs --no-color backend db redis
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Compose reuses the dev Dockerfile (npm ci inside), so there is no second Node setup to maintain.
+      - name: Build frontend image
+        run: docker compose build frontend
+      - name: Type check
+        run: docker compose run --rm --no-deps frontend npx tsc -b
+      - name: Lint
+        run: docker compose run --rm --no-deps frontend npm run lint
+      - name: Test
+        run: docker compose run --rm --no-deps frontend npm test
+      - name: Build
+        run: docker compose run --rm --no-deps frontend npm run build
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
