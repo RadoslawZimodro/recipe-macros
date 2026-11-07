@@ -95,8 +95,12 @@ export interface Nutrition {
 
 export const RECIPES_PAGE_SIZE = 20
 
-export function listRecipes(q: string, offset: number): Promise<RecipeList> {
-  const params = new URLSearchParams({ limit: String(RECIPES_PAGE_SIZE), offset: String(offset) })
+export function listRecipes(
+  q: string,
+  offset: number,
+  limit = RECIPES_PAGE_SIZE,
+): Promise<RecipeList> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
   if (q.trim()) params.set('q', q.trim())
   return api.get<RecipeList>(`/recipes?${params}`)
 }

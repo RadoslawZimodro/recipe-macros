@@ -83,6 +83,9 @@ pantry.
   manual correction of an ingredient's weight, delete).
 - **Tests.** Vitest + Testing Library with a mocked `fetch`: the client (CSRF header, refresh,
   no loops, error parsing) and the login/register flows (wrong password, taken email, redirects).
+- **Day log (`/log`).** Pick a date, add servings of a recipe or grams of a product (search by name),
+  delete entries, see the day's total against the goals (editable here) and a 7/30-day calorie chart
+  (Recharts). Days follow Polish time like the API; all macros are shown as estimates.
 
 ## Authentication
 
