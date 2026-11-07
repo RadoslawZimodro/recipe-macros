@@ -1,5 +1,7 @@
 # Recipe Macros
 
+[![CI](https://github.com/RadoslawZimodro/recipe-macros/actions/workflows/ci.yml/badge.svg)](https://github.com/RadoslawZimodro/recipe-macros/actions/workflows/ci.yml)
+
 Import a recipe from a link, get an **estimate** of its macros (kcal, protein, fat, carbs; total
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
@@ -50,6 +52,8 @@ docker compose exec db psql -U postgres -d recipe_macros             # SQL shell
 docker compose exec frontend npm test                                # frontend tests (Vitest)
 docker compose exec frontend sh -c "npx tsc -b && npm run lint"      # types + lint
 ```
+
+CI (`.github/workflows/ci.yml`) runs the same commands through `docker compose`: ruff, pytest, `tsc -b`, oxlint, Vitest and the production build.
 
 ### Pre-commit (on the host)
 
