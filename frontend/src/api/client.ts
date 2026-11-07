@@ -12,13 +12,26 @@ export class ApiError extends Error {
   readonly status: number
   // The message the API sent (English), for details a generic Polish text cannot give.
   readonly detail: string
+  // Stable machine-readable code, when the API sends one ({"detail": {"code", "message"}}).
+  readonly code: string | null
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, code: string | null = null) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.code = code
   }
+}
+
+function codeOf(body: unknown): string | null {
+  if (body && typeof body === 'object' && 'detail' in body) {
+    const { detail } = body as { detail: unknown }
+    if (detail && typeof detail === 'object' && 'code' in detail) {
+      return String((detail as { code: unknown }).code)
+    }
+  }
+  return null
 }
 
 function csrfToken(): string | null {
@@ -31,6 +44,9 @@ function detailOf(body: unknown, fallback: string): string {
   if (body && typeof body === 'object' && 'detail' in body) {
     const { detail } = body as { detail: unknown }
     if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object' && 'message' in detail) {
+      return String((detail as { message: unknown }).message)
+    }
     if (Array.isArray(detail)) {
       const messages = detail
         .map((item) => (item && typeof item === 'object' && 'msg' in item ? String(item.msg) : ''))
@@ -104,7 +120,7 @@ async function request<T>(
     } catch {
       // not JSON (a proxy error page, for example): the status text will do
     }
-    throw new ApiError(response.status, detailOf(parsed, response.statusText))
+    throw new ApiError(response.status, detailOf(parsed, response.statusText), codeOf(parsed))
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T

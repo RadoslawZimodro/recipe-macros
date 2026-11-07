@@ -120,6 +120,24 @@ describe('api client', () => {
     })
   })
 
+  it('extracts code and message from a structured detail', async () => {
+    fetchMock.mockResolvedValueOnce(reply(422, { detail: { code: 'no_recipe', message: 'No recipe found' } }))
+
+    await expect(api.post('/recipes/import', {})).rejects.toMatchObject({
+      status: 422,
+      code: 'no_recipe',
+      detail: 'No recipe found',
+    })
+  })
+
+  it('has no code for a string or array detail', async () => {
+    fetchMock.mockResolvedValueOnce(reply(400, { detail: 'Plain text' }))
+    await expect(api.get('/x')).rejects.toMatchObject({ code: null, detail: 'Plain text' })
+
+    fetchMock.mockResolvedValueOnce(reply(422, { detail: [{ msg: 'Bad' }] }))
+    await expect(api.get('/x')).rejects.toMatchObject({ code: null, detail: 'Bad' })
+  })
+
   it('reports an unreachable server as status 0', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
 

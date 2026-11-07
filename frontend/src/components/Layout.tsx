@@ -12,6 +12,13 @@ export function Layout() {
             Recipe Macros
           </Link>
           {user && (
+            <nav className="flex flex-1 gap-4 text-sm">
+              <Link to="/recipes" className="hover:underline">
+                Przepisy
+              </Link>
+            </nav>
+          )}
+          {user && (
             <div className="flex items-center gap-3 text-sm">
               <span className="hidden text-slate-600 sm:inline dark:text-slate-300">
                 {user.email}
