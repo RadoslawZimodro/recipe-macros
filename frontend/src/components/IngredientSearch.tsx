@@ -24,7 +24,7 @@ interface Props {
 export function IngredientSearch({ label, onPick, excludeIds = NO_IDS, disabled, selected, onClear, showKcal }: Props) {
   const inputId = useId()
   const [text, setText] = useState('')
-  const term = useDebounced(text.trim(), 250)
+  const term = useDebounced(text.trim(), text.trim() === '' ? 0 : 250)
 
   const search = useQuery({
     queryKey: ['ingredients', 'search', term],
@@ -33,7 +33,9 @@ export function IngredientSearch({ label, onPick, excludeIds = NO_IDS, disabled,
     placeholderData: keepPreviousData,
   })
 
-  const results = (search.data?.items ?? []).filter((item) => !excludeIds.includes(item.id))
+  // term is '' right after a pick or a clear: kept-over results of the old term must not show.
+  const current = term !== ''
+  const results = (current ? (search.data?.items ?? []) : []).filter((item) => !excludeIds.includes(item.id))
 
   return (
     <div className="space-y-2">
@@ -54,7 +56,7 @@ export function IngredientSearch({ label, onPick, excludeIds = NO_IDS, disabled,
           {/* Before the first response for the typed text, show progress instead of a stale "empty". */}
           {(term === '' || search.isPending) && <p className="text-sm text-slate-500">Szukam…</p>}
           {search.isError && <ErrorMessage message={describeError(search.error)} />}
-          {search.isSuccess && results.length === 0 && (
+          {current && search.isSuccess && results.length === 0 && (
             <p className="text-sm text-slate-500">Brak pasujących produktów.</p>
           )}
           {results.length > 0 && (
