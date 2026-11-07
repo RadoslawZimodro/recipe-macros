@@ -34,6 +34,9 @@ interface Fake {
   staples: Staples
   matches: RecipeMatch[]
   failMatches?: boolean
+  // HTTP status to answer PUT / DELETE with instead of succeeding.
+  failAdd?: number
+  failRemove?: number
 }
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -59,12 +62,14 @@ function serve() {
       const id = Number(target[2])
       const list = target[1] === 'pantry' ? fake.pantry : fake.staples.own
       if (method === 'PUT') {
+        if (fake.failAdd) return reply(fake.failAdd, { detail: 'boom' })
         const name = INGREDIENTS.find((i) => i.id === id)!.canonical_name
         const item = { ingredient_id: id, name, added_at: NOW }
         list.push(item)
         return reply(200, item)
       }
       if (method === 'DELETE') {
+        if (fake.failRemove) return reply(fake.failRemove, { detail: 'boom' })
         list.splice(0, list.length, ...list.filter((i) => i.ingredient_id !== id))
         return reply(204)
       }
@@ -190,5 +195,48 @@ describe('pantry page', () => {
 
     expect(await screen.findByRole('button', { name: 'Spróbuj ponownie' })).toBeInTheDocument()
     expect(screen.getByText(/Błąd serwera/)).toBeInTheDocument()
+  })
+
+  it('shows an alert when adding a product fails', async () => {
+    fake.failAdd = 500
+    renderPage()
+    const user = userEvent.setup()
+
+    await user.type(await screen.findByLabelText('Dodaj produkt'), 'mle')
+    await user.click(await screen.findByRole('button', { name: 'Mleko' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Błąd serwera/)
+  })
+
+  it('clears a stale add error after a successful remove', async () => {
+    fake.pantry = [{ ingredient_id: 2, name: 'Mąka', added_at: NOW }]
+    fake.failAdd = 500
+    renderPage()
+    const user = userEvent.setup()
+
+    await user.type(await screen.findByLabelText('Dodaj produkt'), 'mle')
+    await user.click(await screen.findByRole('button', { name: 'Mleko' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Błąd serwera/)
+
+    await user.click(screen.getByRole('button', { name: 'Usuń Mąka' }))
+    expect(await screen.findByText(/Lodówka jest pusta/)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows only the latest error when a remove fails after a failed add', async () => {
+    fake.pantry = [{ ingredient_id: 2, name: 'Mąka', added_at: NOW }]
+    fake.failAdd = 500
+    fake.failRemove = 404
+    renderPage()
+    const user = userEvent.setup()
+
+    await user.type(await screen.findByLabelText('Dodaj produkt'), 'mle')
+    await user.click(await screen.findByRole('button', { name: 'Mleko' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Błąd serwera/)
+
+    await user.click(screen.getByRole('button', { name: 'Usuń Mąka' }))
+    const alert = await screen.findByText('Nie znaleziono.')
+    expect(alert).toHaveAttribute('role', 'alert')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
   })
 })

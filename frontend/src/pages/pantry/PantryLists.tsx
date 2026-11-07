@@ -84,11 +84,14 @@ export function PantrySection() {
         label="Dodaj produkt"
         excludeIds={items.map((item) => item.ingredient_id)}
         disabled={add.isPending}
-        onPick={(ingredient) => add.mutate(ingredient.id)}
+        onPick={(ingredient) => {
+          remove.reset()
+          add.mutate(ingredient.id)
+        }}
       />
       {(add.isError || remove.isError) && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-          {describeError(add.error ?? remove.error)}
+          {describeError(remove.error ?? add.error)}
         </p>
       )}
       <Status
@@ -99,7 +102,10 @@ export function PantrySection() {
       <ItemList
         items={items}
         disabled={remove.isPending}
-        onRemove={(item) => remove.mutate(item.ingredient_id)}
+        onRemove={(item) => {
+          add.reset()
+          remove.mutate(item.ingredient_id)
+        }}
       />
     </section>
   )
@@ -108,11 +114,11 @@ export function PantrySection() {
 export function StaplesSection() {
   const queryClient = useQueryClient()
   const staples = useQuery({ queryKey: ['staples'], queryFn: listStaples })
-  // Staples count as available in the matches, so those are refreshed too.
+  // Staples count as available in the matches, so only the recipe matches (not the pantry items) are refreshed too.
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ['staples'] }),
-      queryClient.invalidateQueries({ queryKey: ['pantry'] }),
+      queryClient.invalidateQueries({ queryKey: ['pantry', 'recipes'] }),
     ])
   const add = useMutation({ mutationFn: addStaple, onSuccess: refresh })
   const remove = useMutation({ mutationFn: removeStaple, onSuccess: refresh })
@@ -131,18 +137,24 @@ export function StaplesSection() {
         label="Dodaj do „zawsze w domu”"
         excludeIds={own.map((item) => item.ingredient_id)}
         disabled={add.isPending}
-        onPick={(ingredient) => add.mutate(ingredient.id)}
+        onPick={(ingredient) => {
+          remove.reset()
+          add.mutate(ingredient.id)
+        }}
       />
       {(add.isError || remove.isError) && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-          {describeError(add.error ?? remove.error)}
+          {describeError(remove.error ?? add.error)}
         </p>
       )}
       <Status query={staples} isEmpty={own.length === 0} empty="Nie dodano własnych produktów." />
       <ItemList
         items={own}
         disabled={remove.isPending}
-        onRemove={(item) => remove.mutate(item.ingredient_id)}
+        onRemove={(item) => {
+          add.reset()
+          remove.mutate(item.ingredient_id)
+        }}
       />
       {defaults.length > 0 && (
         <p className="text-sm text-slate-500">Domyślnie: {defaults.join(', ')}.</p>
