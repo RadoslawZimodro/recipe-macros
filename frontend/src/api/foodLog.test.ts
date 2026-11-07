@@ -11,6 +11,7 @@ describe('loggedAtFor', () => {
     (day) => {
       const loggedAt = loggedAtFor(day)!
       expect(warsawDay(loggedAt)).toBe(day)
+      expect(new Date(loggedAt).toISOString()).toBe(`${day}T11:00:00.000Z`)
     },
   )
 

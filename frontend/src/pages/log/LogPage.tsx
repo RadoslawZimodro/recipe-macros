@@ -38,7 +38,7 @@ export function LogPage() {
             type="date"
             value={day}
             max={today}
-            onChange={(e) => e.target.value && setDay(e.target.value)}
+            onChange={(e) => e.target.value && e.target.value <= today && setDay(e.target.value)}
             className="rounded-md border border-slate-300 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-900"
           />
         </div>

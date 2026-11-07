@@ -235,6 +235,17 @@ describe('LogPage', () => {
     ).toBe(true)
   })
 
+  it('ignores a future date typed into the date field', async () => {
+    renderPage()
+    await screen.findByRole('link', { name: 'Pizza' })
+    const future = addDays(TODAY, 3)
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: future } })
+    expect(screen.getByLabelText('Data')).toHaveValue(TODAY)
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes(`date=${future}`)),
+    ).toBe(false)
+  })
+
   it('adds servings of a recipe', async () => {
     entries = []
     const u = userEvent.setup()
