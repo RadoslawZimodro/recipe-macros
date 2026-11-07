@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IngredientSearch } from './IngredientSearch'
 
 const item = (id: number, canonical_name: string) => ({
@@ -20,7 +20,7 @@ const item = (id: number, canonical_name: string) => ({
 function mockSearch(items: ReturnType<typeof item>[], status = 200) {
   const body = status === 200 ? { items, total: items.length, limit: 10, offset: 0 } : { detail: 'x' }
   const fetchMock = vi.fn(
-    async () =>
+    async (..._args: unknown[]) =>
       new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }),
   )
   vi.stubGlobal('fetch', fetchMock)
@@ -34,16 +34,24 @@ function setup(props: Partial<ComponentProps<typeof IngredientSearch>> = {}) {
       <IngredientSearch label="Produkt" onPick={onPick} {...props} />
     </QueryClientProvider>,
   )
-  return { onPick, user: userEvent.setup() }
+  return { onPick, user: userEvent.setup({ advanceTimers: vi.advanceTimersByTime }) }
 }
 
-afterEach(() => vi.unstubAllGlobals())
+beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }))
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
+const advance = (ms: number) => act(async () => void vi.advanceTimersByTime(ms))
 
 describe('IngredientSearch', () => {
   it('searches once after a pause in typing, picks a result and clears the input', async () => {
     const fetchMock = mockSearch([item(1, 'Mleko')])
     const { onPick, user } = setup()
     await user.type(screen.getByLabelText('Produkt'), 'mle')
+    expect(fetchMock).not.toHaveBeenCalled()
+    await advance(250)
     await user.click(await screen.findByRole('button', { name: /Mleko/ }))
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }))
@@ -71,5 +79,41 @@ describe('IngredientSearch', () => {
     expect(screen.getByLabelText('Produkt')).toHaveValue('Mleko')
     await user.type(screen.getByLabelText('Produkt'), 'x')
     expect(onClear).toHaveBeenCalled()
+  })
+
+  it('shows kcal per result only with showKcal', async () => {
+    mockSearch([item(1, 'Mleko')])
+    const { user } = setup({ showKcal: true })
+    await user.type(screen.getByLabelText('Produkt'), 'mle')
+    await advance(250)
+    expect(await screen.findByText('60 kcal/100 g')).toBeInTheDocument()
+  })
+
+  it('omits kcal by default', async () => {
+    mockSearch([item(1, 'Mleko')])
+    const { user } = setup()
+    await user.type(screen.getByLabelText('Produkt'), 'mle')
+    await advance(250)
+    await screen.findByRole('button', { name: 'Mleko' })
+    expect(screen.queryByText(/kcal/)).not.toBeInTheDocument()
+  })
+
+  it('disables the result buttons when disabled', async () => {
+    mockSearch([item(1, 'Mleko')])
+    const { user } = setup({ disabled: true })
+    await user.type(screen.getByLabelText('Produkt'), 'mle')
+    await advance(250)
+    expect(await screen.findByRole('button', { name: /Mleko/ })).toBeDisabled()
+  })
+
+  it('does not show the previous results when typing right after a pick', async () => {
+    mockSearch([item(1, 'Mleko')])
+    const { user } = setup()
+    await user.type(screen.getByLabelText('Produkt'), 'mle')
+    await advance(250)
+    await user.click(await screen.findByRole('button', { name: /Mleko/ }))
+    await user.type(screen.getByLabelText('Produkt'), 'x')
+    expect(screen.queryByRole('button', { name: /Mleko/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Szukam…')).toBeInTheDocument()
   })
 })
