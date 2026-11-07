@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { searchIngredients, type Ingredient } from '../../api/pantry'
 import { describeError } from '../../api/messages'
@@ -26,6 +26,7 @@ export function IngredientPicker({ label, excludeIds, disabled, onPick }: Props)
     queryKey: ['ingredient-search', term],
     queryFn: () => searchIngredients(term),
     enabled: term.length > 0,
+    placeholderData: keepPreviousData,
   })
 
   const results = (search.data?.items ?? []).filter((item) => !excludeIds.includes(item.id))
