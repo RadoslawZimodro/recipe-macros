@@ -4,13 +4,12 @@ import {
   addEntry,
   foodLogKeys,
   loggedAtFor,
-  searchIngredients,
-  type IngredientOut,
 } from '../../api/foodLog'
 import { listRecipes } from '../../api/recipes'
 import { describeError } from '../../api/messages'
+import type { Ingredient } from '../../api/ingredients'
 import { ErrorMessage, Field } from '../../components/Field'
-import { useDebounced } from './useDebounced'
+import { IngredientSearch } from '../../components/IngredientSearch'
 
 type Mode = 'recipe' | 'product'
 
@@ -98,17 +97,10 @@ function RecipePicker({ day }: { day: string }) {
 
 function ProductPicker({ day }: { day: string }) {
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [chosen, setChosen] = useState<IngredientOut | null>(null)
+  const [chosen, setChosen] = useState<Ingredient | null>(null)
   const [grams, setGrams] = useState('100')
-  const q = useDebounced(search.trim(), 250)
-  const results = useQuery({
-    queryKey: ['ingredients', 'search', q],
-    queryFn: () => searchIngredients(q),
-    enabled: q.length > 0 && chosen === null,
-  })
   const add = useMutation({
-    mutationFn: (ingredient: IngredientOut) =>
+    mutationFn: (ingredient: Ingredient) =>
       addEntry({
         ingredient_id: ingredient.id,
         grams: Number(grams),
@@ -124,47 +116,13 @@ function ProductPicker({ day }: { day: string }) {
   }
   return (
     <form onSubmit={submit} className="space-y-3">
-      <Field
-        id="log-product-search"
+      <IngredientSearch
         label="Produkt"
-        type="search"
-        placeholder="Szukaj produktu…"
-        value={chosen ? chosen.canonical_name : search}
-        onChange={(e) => {
-          setChosen(null)
-          setSearch(e.target.value)
-        }}
+        showKcal
+        selected={chosen}
+        onPick={setChosen}
+        onClear={() => setChosen(null)}
       />
-      {chosen === null && search.trim().length > 0 && (
-        <div>
-          {(results.isPending || q !== search.trim()) && <p>Szukam…</p>}
-          {results.isError && <ErrorMessage message={describeError(results.error)} />}
-          {results.isSuccess && q === search.trim() && results.data.items.length === 0 && (
-            <p className="text-slate-600 dark:text-slate-300">Nie znaleziono produktów.</p>
-          )}
-          {results.isSuccess && q === search.trim() && results.data.items.length > 0 && (
-            <ul
-              aria-label="Wyniki wyszukiwania"
-              className="divide-y divide-slate-200 rounded-md border border-slate-200 dark:divide-slate-700 dark:border-slate-700"
-            >
-              {results.data.items.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => setChosen(item)}
-                    className="flex w-full justify-between px-3 py-2 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
-                  >
-                    <span>{item.canonical_name}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {item.kcal_per_100g} kcal/100 g
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
       <Field
         id="log-grams"
         label="Gramy"

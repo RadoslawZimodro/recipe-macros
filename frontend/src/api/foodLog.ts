@@ -64,25 +64,6 @@ export interface GoalsIn {
   daily_protein_goal: number | null
 }
 
-export interface IngredientOut {
-  id: number
-  canonical_name: string
-  kcal_per_100g: number
-  protein_per_100g: number
-  fat_per_100g: number
-  carbs_per_100g: number
-  density_g_per_ml: number | null
-  source: string
-  is_shared: boolean
-}
-
-export interface IngredientListOut {
-  items: IngredientOut[]
-  total: number
-  limit: number
-  offset: number
-}
-
 // The API groups days by Polish time, so "today" and the chart ranges must be Polish dates too.
 const TIME_ZONE = 'Europe/Warsaw'
 
@@ -120,6 +101,3 @@ export const getDays = (from: string, to: string) =>
 export const addEntry = (payload: FoodLogIn) => api.post<FoodLogEntry>('/food-log', payload)
 export const deleteEntry = (id: number) => api.delete<void>(`/food-log/${id}`)
 export const setGoals = (goals: GoalsIn) => api.patch<User>('/auth/me/goals', goals)
-
-export const searchIngredients = (q: string) =>
-  api.get<IngredientListOut>(`/ingredients?q=${encodeURIComponent(q)}&limit=10`)
