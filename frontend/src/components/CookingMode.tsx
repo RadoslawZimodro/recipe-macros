@@ -32,39 +32,45 @@ const safeImage = (url: string | null | undefined) => (url && IMAGE_PATH.test(ur
 export function CookingMode({ open, onClose, title, steps, ingredients, opener }: CookingModeProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
+  const [index, setIndex] = useState(0)
+  const active = open && steps.length > 0
+  const last = steps.length - 1
+  const go = (i: number) => setIndex(Math.min(last, Math.max(0, i)))
 
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
-    if (open && !dialog.open) {
-      dialog.showModal()
-      document.body.style.overflow = 'hidden' // the native modal does not lock page scrolling
-    }
-    if (!open && dialog.open) dialog.close()
+    if (active && !dialog.open) dialog.showModal()
+    if (!active && dialog.open) dialog.close()
+    if (!active) return
+    // The native modal does not lock page scrolling; restore whatever was there before.
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     return () => {
-      document.body.style.overflow = ''
+      document.body.style.overflow = previous
     }
-  }, [open])
+  }, [active])
 
   function close() {
+    setIndex(0)
     onClose()
     opener.current?.focus()
   }
+
+  if (steps.length === 0) return null
 
   return (
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      aria-modal="true"
       onCancel={(e) => {
-        e.preventDefault() // we close through state, see close()
+        e.preventDefault() // Escape: we close through state, see close()
         close()
       }}
+      // On the dialog, not an inner element, so arrows work wherever focus is inside it.
       onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          close()
-        }
+        if (e.key === 'ArrowLeft') go(index - 1)
+        if (e.key === 'ArrowRight') go(index + 1)
       }}
       onClick={(e) => {
         if (e.target === ref.current) close() // click on the backdrop, not on the content
@@ -72,7 +78,15 @@ export function CookingMode({ open, onClose, title, steps, ingredients, opener }
       className="m-0 h-dvh max-h-none w-full max-w-none border-0 bg-surface p-0 text-ink backdrop:bg-canvas/80 sm:m-auto sm:h-auto sm:max-h-[90dvh] sm:max-w-3xl sm:rounded-lg sm:border sm:border-line"
     >
       {open && (
-        <CookingBody titleId={titleId} title={title} steps={steps} ingredients={ingredients} onClose={close} />
+        <CookingBody
+          titleId={titleId}
+          title={title}
+          steps={steps}
+          ingredients={ingredients}
+          index={index}
+          go={go}
+          onClose={close}
+        />
       )}
     </dialog>
   )
@@ -83,15 +97,18 @@ function CookingBody({
   title,
   steps,
   ingredients,
+  index,
+  go,
   onClose,
 }: {
   titleId: string
   title: string
   steps: RecipeStep[]
   ingredients: IngredientLine[]
+  index: number
+  go: (i: number) => void
   onClose: () => void
 }) {
-  const [index, setIndex] = useState(0)
   const [failed, setFailed] = useState<Set<string>>(new Set())
   const last = steps.length - 1
   const step = steps[index]
@@ -104,16 +121,8 @@ function CookingBody({
     if (next) new Image().src = imageSrc(next)
   }, [index, steps])
 
-  const go = (i: number) => setIndex(Math.min(last, Math.max(0, i)))
-
   return (
-    <div
-      className="flex h-full max-h-[inherit] flex-col gap-4 overflow-y-auto p-4 sm:p-6"
-      onKeyDown={(e) => {
-        if (e.key === 'ArrowLeft') go(index - 1)
-        if (e.key === 'ArrowRight') go(index + 1)
-      }}
-    >
+    <div className="flex h-full max-h-[inherit] flex-col gap-4 overflow-y-auto p-4 sm:p-6">
       <header className="flex items-start justify-between gap-4">
         <h2 id={titleId} className="text-h3">
           {title}

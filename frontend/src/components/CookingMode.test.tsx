@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useRef, useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { IngredientLine, RecipeStep } from '../api/recipes'
 import { CookingMode } from './CookingMode'
 
@@ -12,7 +12,7 @@ const STEPS: RecipeStep[] = [
 ]
 const INGREDIENTS = [{ id: 1, raw_text: '2 jajka' }] as IngredientLine[]
 
-function Harness({ steps = STEPS }: { steps?: RecipeStep[] }) {
+function Harness({ steps = STEPS, onClose }: { steps?: RecipeStep[]; onClose?: () => void }) {
   const [open, setOpen] = useState(false)
   const button = useRef<HTMLButtonElement>(null)
   return (
@@ -22,7 +22,10 @@ function Harness({ steps = STEPS }: { steps?: RecipeStep[] }) {
       </button>
       <CookingMode
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false)
+          onClose?.()
+        }}
         title="Szakszuka"
         steps={steps}
         ingredients={INGREDIENTS}
@@ -103,11 +106,15 @@ describe('CookingMode', () => {
     expect(screen.getByText('2 jajka')).toBeInTheDocument()
   })
 
-  it('closes with Escape, Zakończ and a backdrop click, returning focus to the opener', async () => {
-    const user = await openDialog()
-    const opener = screen.getByRole('button', { name: 'Tryb gotowania', hidden: true })
-    await user.click(screen.getByRole('button', { name: 'Krok 1' })) // jsdom does not move focus into the dialog
-    await user.keyboard('{Escape}')
+  it('closes once on Escape (cancel event), then on Zakończ and a backdrop click; focus returns to the opener', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    render(<Harness onClose={onClose} />)
+    const opener = screen.getByRole('button', { name: 'Tryb gotowania' })
+    await user.click(opener)
+    // jsdom has no Escape handling for <dialog>; the browser fires "cancel", so do the same.
+    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))
+    expect(onClose).toHaveBeenCalledTimes(1)
     expect(screen.queryByText('Krok 1 z 3')).not.toBeInTheDocument()
     expect(opener).toHaveFocus()
 
@@ -118,15 +125,55 @@ describe('CookingMode', () => {
     expect(opener).toHaveFocus()
 
     await user.click(opener)
+    expect(screen.getByText('Krok 1 z 3')).toBeInTheDocument() // reopens at the first step
     await user.click(screen.getByRole('dialog')) // the dialog element itself is the backdrop
     expect(screen.queryByText('Krok 1 z 3')).not.toBeInTheDocument()
   })
 
-  it('locks page scrolling while open', async () => {
-    const user = await openDialog()
+  it('restores the previous body overflow after closing and after unmounting', async () => {
+    document.body.style.overflow = 'scroll'
+    const user = userEvent.setup()
+    const { unmount } = render(<Harness />)
+    await user.click(screen.getByRole('button', { name: 'Tryb gotowania' }))
     expect(document.body.style.overflow).toBe('hidden')
-    await user.click(screen.getByRole('button', { name: 'Krok 1' })) // jsdom does not move focus into the dialog
-    await user.keyboard('{Escape}')
-    expect(document.body.style.overflow).toBe('')
+    await user.click(screen.getByRole('button', { name: 'Zamknij tryb gotowania' }))
+    expect(document.body.style.overflow).toBe('scroll')
+    await user.click(screen.getByRole('button', { name: 'Tryb gotowania' }))
+    unmount()
+    expect(document.body.style.overflow).toBe('scroll')
+    document.body.style.overflow = ''
+  })
+
+  it('changes step on arrows even when the key lands on the step text or the dialog', async () => {
+    await openDialog()
+    fireEvent.keyDown(screen.getByText('Pokrój cebulę.'), { key: 'ArrowRight' })
+    expect(screen.getByText('Krok 2 z 3')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowLeft' })
+    expect(screen.getByText('Krok 1 z 3')).toBeInTheDocument()
+  })
+
+  it('renders nothing and does not throw without steps', () => {
+    const { container } = render(
+      <CookingMode open onClose={() => {}} title="X" steps={[]} ingredients={[]} opener={{ current: null }} />,
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('remembers a failed photo per URL', async () => {
+    const steps: RecipeStep[] = [
+      { position: 1, instruction: 'Jeden.', image_url: null },
+      { position: 2, instruction: 'Dwa.', image_url: '/recipes/7/steps/2/image' },
+      { position: 3, instruction: 'Trzy.', image_url: '/recipes/7/steps/3/image' },
+    ]
+    const user = userEvent.setup()
+    render(<Harness steps={steps} />)
+    await user.click(screen.getByRole('button', { name: 'Tryb gotowania' }))
+    await user.click(screen.getByRole('button', { name: 'Krok 2' }))
+    fireEvent.error(screen.getByRole('img'))
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Krok 3' }))
+    expect(screen.getByRole('img')).toHaveAttribute('src', expect.stringMatching(/steps\/3\/image$/))
+    await user.click(screen.getByRole('button', { name: 'Krok 2' }))
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 })
