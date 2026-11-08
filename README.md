@@ -62,12 +62,45 @@ pip install pre-commit   # or: pipx install pre-commit
 pre-commit install
 ```
 
+## Interface
+
+The UI is in Polish and dark only. Screenshots use demo data.
+
+| | |
+|---|---|
+| ![Login](docs/screenshots/login.png) | ![Home](docs/screenshots/home.png) |
+| Login | Home with shortcuts |
+| ![Recipes](docs/screenshots/recipes.png) | ![Recipe detail](docs/screenshots/recipe-detail.png) |
+| Recipe list | Recipe detail with estimated macros |
+| ![Day log](docs/screenshots/day-log.png) | ![Pantry](docs/screenshots/pantry.png) |
+| Day log with totals and calorie chart | Pantry |
+| ![Delete dialog](docs/screenshots/recipe-delete-dialog.png) | |
+| Delete confirmation (native `<dialog>`) | |
+
+Mobile:
+
+<img src="docs/screenshots/home-mobile.png" alt="Home, mobile" width="260"> <img src="docs/screenshots/day-log-mobile.png" alt="Day log, mobile" width="260">
+
+### Design system
+
+A warm, calm "kitchen notebook" look; the full spec is in [.interface-design/system.md](.interface-design/system.md).
+
+- **Dark only**, `color-scheme: dark`, no theme toggle. One accent: sage (`--color-accent`).
+- **Type:** Fraunces for headings and the large macro figures, Inter for everything else, both
+  self-hosted (`@fontsource-variable`), tabular numerals.
+- **Tokens** (colors, radii, fonts) live in `frontend/src/index.css` under Tailwind's `@theme`;
+  components use tokens only, no raw hex or palette colors.
+- **Flat:** 4 px spacing grid, 1 px hairline borders, no shadows, no gradients.
+- **Base components** in `frontend/src/components/ui/`: Button, Input/Select/Field, Card, Chip,
+  Modal, Nav, SegmentedControl, MacroFigure, EmptyState, ErrorMessage, Spinner.
+- **Accessibility:** text and control borders target WCAG AA contrast, `:focus-visible` rings,
+  `prefers-reduced-motion` respected, confirmations use the native `<dialog>` element.
+
 ## Frontend
 
-The interface is in Polish (code and comments stay in English) and follows the system's light or
-dark setting (Tailwind's `dark:` variant uses `prefers-color-scheme`). It is built in parts, each its
-own pull request: login and app shell (done), recipes and import, the day log with a chart, the
-pantry.
+The interface is in Polish (code and comments stay in English) and dark only (see
+[Interface](#interface)). It is built in parts, each its own pull request: login and app shell
+(done), recipes and import, the day log with a chart, the pantry.
 
 - **Session.** The API keeps the session in HttpOnly cookies, so the browser sends them with
   `credentials: 'include'` and the JavaScript never sees a token. State-changing requests echo the
