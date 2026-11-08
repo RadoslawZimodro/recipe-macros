@@ -181,19 +181,31 @@ function IngredientRow({
 
   return (
     <li className="space-y-2 py-4">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-        <span>
-          {line.raw_text}
-          {line.is_optional && ' (opcjonalnie)'}
-        </span>
-        <span className="text-small tabular-nums text-ink-3">
-          {quantity && `${quantity} · `}
-          {gramsShown !== null ? `~${nf.format(gramsShown)} g` : 'waga nieznana'}
-          {line.grams !== null && ' (ręcznie)'}
-          {computed?.product && ` · ${computed.product.name} (${SOURCE_LABELS[computed.product.source]})`}
-        </span>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <p className="text-body font-medium text-ink">
+            {line.raw_text}
+            {line.is_optional && ' (opcjonalnie)'}
+          </p>
+          <p className="text-small tabular-nums text-ink-3">
+            {quantity && `${quantity} · `}
+            {gramsShown !== null ? `~${nf.format(gramsShown)} g` : 'waga nieznana'}
+            {line.grams !== null && ' (ręcznie)'}
+            {computed?.product && ` · ${computed.product.name} (${SOURCE_LABELS[computed.product.source]})`}
+          </p>
+        </div>
+        {!editing && (
+          <Button
+            variant="link"
+            className="shrink-0"
+            onClick={() => setEditing(true)}
+            aria-label={`Popraw wagę: ${line.raw_text}`}
+          >
+            Popraw wagę
+          </Button>
+        )}
       </div>
-      {editing ? (
+      {editing && (
         <form onSubmit={save} className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 text-small text-ink-2">
             Waga w gramach ({line.raw_text})
@@ -222,10 +234,6 @@ function IngredientRow({
             </div>
           )}
         </form>
-      ) : (
-        <Button variant="link" onClick={() => setEditing(true)} aria-label={`Popraw wagę: ${line.raw_text}`}>
-          Popraw wagę
-        </Button>
       )}
     </li>
   )
