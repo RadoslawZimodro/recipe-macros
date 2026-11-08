@@ -6,11 +6,11 @@
 -- replaced, so a non-zero xmax means "this row was updated", zero means "freshly inserted".
 -- created_at and the id stay; updated_at is bumped by the trg_recipes_set_updated_at trigger.
 INSERT INTO recipes (
-    user_id, title, description, source_url, servings, image_url,
+    user_id, title, description, source_url, servings, image_url, cover_path, cover_content_type,
     prep_time_min, cook_time_min, tags, source_nutrition, import_method, imported_at
 )
 VALUES (
-    :user_id, :title, :description, :source_url, :servings, :image_url,
+    :user_id, :title, :description, :source_url, :servings, :image_url, :cover_path, :cover_content_type,
     :prep_time_min, :cook_time_min, CAST(:tags AS text[]),
     CAST(:source_nutrition AS jsonb), :import_method, now()
 )
@@ -20,6 +20,8 @@ DO UPDATE SET
     description      = EXCLUDED.description,
     servings         = EXCLUDED.servings,
     image_url        = EXCLUDED.image_url,
+    cover_path       = EXCLUDED.cover_path,
+    cover_content_type = EXCLUDED.cover_content_type,
     prep_time_min    = EXCLUDED.prep_time_min,
     cook_time_min    = EXCLUDED.cook_time_min,
     tags             = EXCLUDED.tags,

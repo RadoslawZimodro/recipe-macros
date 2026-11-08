@@ -1,5 +1,7 @@
 """Recipe CRUD. Every endpoint requires a session; state-changing ones also require CSRF."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi import Path as PathParam
 from fastapi.responses import FileResponse
@@ -62,15 +64,7 @@ def get_nutrition(
     return nutrition_service.get_nutrition(session, recipe_id, include_optional=include_optional)
 
 
-@router.get("/{recipe_id}/steps/{position}/image", response_class=FileResponse)
-def get_step_image(
-    recipe_id: int = PathParam(ge=1, le=2_147_483_647),  # int4: larger ids would be a DB error
-    position: int = PathParam(ge=1, le=10_000),
-    session: Session = Depends(get_session),
-) -> FileResponse:
-    """The saved picture of a step (a local copy made at import). 404 if the recipe is not
-    yours or the step has none. Private cache only: the picture is behind the login."""
-    path, content_type = recipe_service.get_step_image(session, recipe_id, position)
+def _image_response(path: Path, content_type: str) -> FileResponse:
     return FileResponse(
         path,
         media_type=content_type,
@@ -81,6 +75,26 @@ def get_step_image(
             "Content-Security-Policy": "default-src 'none'; sandbox",
         },
     )
+
+
+@router.get("/{recipe_id}/cover", response_class=FileResponse)
+def get_cover(
+    recipe_id: int = PathParam(ge=1, le=2_147_483_647),  # int4: larger ids would be a DB error
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    """The saved photo of the dish (a local copy made at import). 404 if the recipe is not
+    yours or has none. Private cache only: the picture is behind the login."""
+    return _image_response(*recipe_service.get_cover(session, recipe_id))
+
+
+@router.get("/{recipe_id}/steps/{position}/image", response_class=FileResponse)
+def get_step_image(
+    recipe_id: int = PathParam(ge=1, le=2_147_483_647),
+    position: int = PathParam(ge=1, le=10_000),
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    """The saved picture of a step (a local copy made at import). Same rules as the cover."""
+    return _image_response(*recipe_service.get_step_image(session, recipe_id, position))
 
 
 @router.patch("/{recipe_id}/ingredients/{line_id}", response_model=RecipeOut)

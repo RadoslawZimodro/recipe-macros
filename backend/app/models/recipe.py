@@ -109,6 +109,18 @@ class Recipe(Base):
         CheckConstraint(
             "import_method IN ('jsonld', 'microdata', 'llm', 'manual')", name="import_method"
         ),
+        CheckConstraint(
+            r"cover_path IS NULL OR cover_path ~ '^[0-9a-f]{32}\.(jpg|png|webp|gif)$'",
+            name="cover_path_name",
+        ),
+        CheckConstraint(
+            "cover_content_type IS NULL OR cover_content_type IN "
+            "('image/jpeg', 'image/png', 'image/webp', 'image/gif')",
+            name="cover_content_type",
+        ),
+        CheckConstraint(
+            "(cover_path IS NULL) = (cover_content_type IS NULL)", name="cover_both_or_none"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Identity(), primary_key=True)
@@ -117,7 +129,10 @@ class Recipe(Base):
     description: Mapped[str | None] = mapped_column(Text)
     source_url: Mapped[str | None] = mapped_column(Text)
     servings: Mapped[int] = mapped_column(server_default="1")
-    image_url: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)  # the source address of the photo
+    # Local copy of that photo: generated file name in MEDIA_DIR + type detected from the bytes.
+    cover_path: Mapped[str | None] = mapped_column(Text)
+    cover_content_type: Mapped[str | None] = mapped_column(Text)
     prep_time_min: Mapped[int | None] = mapped_column()
     cook_time_min: Mapped[int | None] = mapped_column()
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))

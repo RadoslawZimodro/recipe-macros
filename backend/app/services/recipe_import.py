@@ -25,7 +25,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import RecipeIngredient, RecipeStep
+from app.models import Recipe, RecipeIngredient, RecipeStep
 from app.schemas.recipe import RecipeOut
 from app.services import ai_merge
 from app.services.ai_client import AIUnavailable
@@ -39,7 +39,7 @@ from app.services.recipe_extractor import ExtractedRecipe, extract_recipe
 from app.services.recipes import build_children, get_recipe
 from app.services.safe_fetch import FetchedPage, FetchError
 from app.services.sql import load_sql
-from app.services.step_images import discard, download_step_images
+from app.services.step_images import discard, download_cover, download_step_images, new_deadline
 from app.services.urls import UrlError, normalize_url
 
 logger = logging.getLogger(__name__)
@@ -113,10 +113,21 @@ def _save(
     user_id: int,
     extracted: ExtractedRecipe,
     images: dict[int, StoredImage],
+    cover: StoredImage | None,
 ) -> tuple[int, bool, list[str]]:
     """Upsert the recipe row, then replace its steps and ingredient lines. One transaction.
-    Also returns the file names of the pictures the old steps had (to delete after the commit)."""
+    Also returns the file names of the pictures replaced or dropped (to delete after the commit)."""
     recipe = extracted.recipe
+    # The old cover stays when no new one arrived and the photo address is the same; with a
+    # different address it would show the wrong picture, so it goes.
+    previous = session.execute(
+        select(Recipe.image_url, Recipe.cover_path, Recipe.cover_content_type).where(
+            Recipe.source_url == recipe.source_url, Recipe.deleted_at.is_(None)
+        )  # RLS limits this to the current user
+    ).first()
+    old_cover = previous.cover_path if previous else None
+    if cover is None and old_cover and previous.image_url == recipe.image_url:
+        cover = StoredImage(old_cover, previous.cover_content_type)
     row = session.execute(
         load_sql("upsert_imported_recipe.sql"),
         {
@@ -126,6 +137,8 @@ def _save(
             "source_url": recipe.source_url,
             "servings": recipe.servings,
             "image_url": recipe.image_url,
+            "cover_path": cover.name if cover else None,
+            "cover_content_type": cover.content_type if cover else None,
             "prep_time_min": recipe.prep_time_min,
             "cook_time_min": recipe.cook_time_min,
             "tags": recipe.tags,
@@ -152,6 +165,8 @@ def _save(
             images[pos] = StoredImage(path, content_type)
     used = {img.name for img in images.values()}
     old_files = [path for _, _, path, _ in old if path not in used]
+    if old_cover and (cover is None or cover.name != old_cover):
+        old_files.append(old_cover)
     # On a refresh the old children go first; the (recipe_id, position) keys would collide.
     session.execute(delete(RecipeStep).where(RecipeStep.recipe_id == row.id))
     session.execute(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == row.id))
@@ -259,19 +274,24 @@ def import_recipe(
     # Pictures are downloaded without a database transaction open, after the AI has settled
     # the final steps (it may have changed their number; then the pictures are already dropped).
     session.commit()
-    stored, skipped = download_step_images(fetcher, final.step_images)
+    deadline = new_deadline()  # one time budget: the cover goes first, the steps get the rest
+    cover = download_cover(fetcher, final.recipe.image_url, deadline)
+    stored, skipped = download_step_images(fetcher, final.step_images, deadline)
     if extracted is not None:  # pictures the AI's changed step count made unusable
         skipped += sum(1 for u in extracted.step_images if u) - sum(
             1 for u in final.step_images if u
         )
     images = {pos: img for pos, img in enumerate(stored, start=1) if img is not None}
     try:
-        recipe_id, inserted, old_files = _save(session, user_id, final, images)
+        recipe_id, inserted, old_files = _save(session, user_id, final, images, cover)
     except Exception:
         session.rollback()
-        discard(stored)  # no orphan files when the save fails
+        discard([*stored, cover])  # no orphan files when the save fails
         raise
     delete_images(old_files)  # the refresh replaced them
+    if final.recipe.image_url and cover is None:
+        note = "The photo of the dish could not be saved."
+        notice = f"{notice} {note}" if notice else note
     if skipped:
         note = f"{skipped} step picture(s) could not be saved; those steps have no picture."
         notice = f"{notice} {note}" if notice else note

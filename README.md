@@ -199,6 +199,7 @@ Everything below needs a session; `POST`/`PUT`/`DELETE` also need the `X-CSRF-To
 | `GET /recipes/{id}` | One recipe with ordered steps and ingredient lines |
 | `PUT /recipes/{id}` | Replace the whole recipe; steps and lines are replaced as a unit in one transaction |
 | `DELETE /recipes/{id}` | Soft delete (`204`) |
+| `GET /recipes/{id}/cover` | Local copy of the dish photo (see "Cover photo"); recipes carry `cover_url` |
 | `GET /ingredients?q=` | Search products: the shared catalog plus your own |
 | `POST /ingredients` | Add a private product (nutrition per 100 g, `source` is always `manual`) |
 | `GET /units` | Allowed units for ingredient lines |
@@ -457,6 +458,33 @@ be injected.
   keeps its old picture while its position and text are unchanged.
   Soft delete leaves the files (the recipe can still be referenced by the food log).
 
+### Cover photo
+
+The photo of the dish (`recipes.image_url`, from JSON-LD `image` / og:image) is also saved as a
+**local copy**, so the list and the details keep working when the site changes or disappears.
+`image_url` stays as it is (the source address); the copy is in `recipes.cover_path` and
+`cover_content_type` (migration 0011, same CHECKs as for step pictures; the existing RLS policy and
+the table-level grants on `recipes` cover the new columns).
+
+Contract: `RecipeOut` and every item of `GET /recipes` have `cover_url: string | null`, always the
+relative path `/recipes/{id}/cover` (built in SQL from the id, as for steps) or `null`. `GET
+/recipes/{id}/cover` needs a session; `404` for another user's, soft-deleted or photo-less recipe,
+`422` for an id outside 1..2147483647; it answers with the stored type, `X-Content-Type-Options:
+nosniff`, `Cache-Control: private, max-age=86400` and `Content-Security-Policy: default-src 'none';
+sandbox`. `POST`/`PUT` reject `cover_*` (unknown fields are 422), so the client cannot set it.
+
+- **Same machinery as step pictures.** The same SSRF-safe fetcher, type by magic bytes, `uuid.ext`
+  names, atomic write, and the `image_max_bytes` limit (5 MB is enough for a typical og:image). It is
+  downloaded after the AI step, before the save; the cover goes first and shares the one 60 s budget with
+  the step pictures. It does not count toward the 30 step pictures.
+- **A failure never breaks an import.** The `notice` says "The photo of the dish could not be saved."
+- **Refresh.** A new cover replaces the old one and the old file is deleted after the commit. If the
+  download fails and `image_url` is unchanged, the old cover is kept; if `image_url` changed, the old
+  cover would show the wrong dish, so it is dropped. `PUT` never touches the cover (it is not a client
+  field). A failed save deletes the new file; soft delete leaves files, like for steps.
+- **Why columns on `recipes`** and not a new table: one photo per recipe, so RLS and grants apply as
+  they are, and the list needs no extra join (no N+1).
+
 ## AI import
 
 The AI (Claude, `claude-haiku-5-5` by default, change it with `AI_MODEL`) is called from the backend
@@ -705,6 +733,9 @@ erDiagram
         int user_id FK "RLS"
         text title
         text source_url "unique per user while active"
+        text image_url "source address of the photo"
+        text cover_path "local copy of the photo, generated file name, nullable"
+        text cover_content_type "detected from the bytes, nullable"
         int servings
         text_array tags "GIN index"
         jsonb source_nutrition

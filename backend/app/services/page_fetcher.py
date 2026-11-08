@@ -54,7 +54,7 @@ class PageFetcher:
         return page
 
     def fetch_image(self, url: str, *, timeout: float | None = None) -> FetchedPage:
-        """Fetch one step picture: same SSRF-safe transport, its own size limit, no cache.
+        """Fetch one picture (step or cover): SSRF-safe transport, its own size limit, no cache.
         The type is NOT checked here (a header can lie); see media.detect_image.
         robots.txt is not consulted: the page was allowed and its pictures are part of it."""
         return safe_get(
