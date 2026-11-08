@@ -61,7 +61,7 @@ export function SegmentedControl<T extends string>({
             tabIndex={tabs && !active ? -1 : undefined}
             onClick={() => onChange(o.value)}
             className={cx(
-              'press h-8 rounded-sm px-3 text-small font-medium transition-[color,background-color] duration-150 ease-soft',
+              'press h-10 rounded-sm px-4 text-small font-medium transition-[color,background-color] duration-150 ease-soft',
               active ? 'bg-accent text-on-accent' : 'text-ink-2 hover:bg-raised hover:text-ink',
             )}
           >

@@ -16,7 +16,7 @@ export function Layout() {
     <div className="min-h-screen bg-canvas text-ink">
       <header className="border-b border-line">
         {/* Wraps on mobile: brand + logout on the first row, navigation on the second. */}
-        <div className="mx-auto flex max-w-page flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex min-h-16 max-w-page flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
           <Link
             to="/"
             className="mr-auto font-display text-h4 font-semibold whitespace-nowrap tracking-tight sm:mr-0"
