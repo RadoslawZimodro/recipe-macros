@@ -256,8 +256,8 @@ describe('recipe details', () => {
       'href',
       'https://example.com/szakszuka',
     )
-    expect(await screen.findByText('~300 kcal')).toBeInTheDocument()
-    expect(screen.getByText('~150 kcal')).toBeInTheDocument()
+    expect(await screen.findByText('~300')).toBeInTheDocument()
+    expect(screen.getByText('~150')).toBeInTheDocument()
     expect(screen.getByText('szacunek')).toBeInTheDocument()
     expect(screen.getByText(/Źródła: Open Food Facts/)).toBeInTheDocument()
     expect(screen.getByText(/~100 g · jajko \(Open Food Facts\)/)).toBeInTheDocument()
@@ -293,7 +293,7 @@ describe('recipe details', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz' }))
 
     await waitFor(() => expect(patched).toEqual({ grams: 150 }))
-    expect(await screen.findByText('~450 kcal')).toBeInTheDocument()
+    expect(await screen.findByText('~450')).toBeInTheDocument()
     expect(screen.getByText(/\(ręcznie\)/)).toBeInTheDocument()
   })
 
@@ -352,10 +352,33 @@ describe('recipe details', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Usuń przepis' }))
     expect(deleted).toBe(false)
-    const confirm = screen.getByText('Na pewno usunąć ten przepis?').parentElement!
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Tak, usuń' }))
+    const dialog = screen.getByRole('dialog', { name: 'Usunąć przepis?' })
+    expect(within(dialog).getByText('Na pewno usunąć ten przepis?')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Tak, usuń' }))
 
     expect(await screen.findByRole('heading', { name: 'Przepisy' })).toBeInTheDocument()
     expect(deleted).toBe(true)
+  })
+
+  it('does nothing when the deletion is cancelled in the dialog', async () => {
+    let deleted = false
+    serve({
+      ...AUTH,
+      'GET /recipes/7': () => reply(200, RECIPE),
+      'GET /recipes/7/nutrition': () => reply(200, NUTRITION),
+      'DELETE /recipes/7': () => {
+        deleted = true
+        return reply(204)
+      },
+    })
+    renderAt('/recipes/7')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Usuń przepis' }))
+    const dialog = screen.getByRole('dialog', { name: 'Usunąć przepis?' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Anuluj' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Szakszuka' })).toBeInTheDocument()
+    expect(deleted).toBe(false)
   })
 })
