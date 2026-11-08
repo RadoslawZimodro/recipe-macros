@@ -377,6 +377,8 @@ def test_names_are_matched_in_full(alice, web):
         "/recipes/1/steps/99999999999/image",
         "/recipes/99999999999/steps/1/image",
         "/recipes/1/steps/0/image",
+        "/recipes/1/steps/10001/image",
+        "/recipes/0/steps/1/image",
     ],
 )
 def test_out_of_range_ids_are_rejected_not_a_server_error(alice, path):
@@ -463,3 +465,27 @@ def test_refresh_keeps_the_old_picture_when_the_download_fails(alice, web):
     assert alice.get(f"/recipes/{first['id']}/steps/2/image").content == GIF
     files = media_files()
     assert len(files) == 2 and len(files & old) == 1  # old step-1 file kept, old step-2 deleted
+
+
+def test_the_largest_valid_position_is_just_a_missing_picture(alice):
+    rid = create(alice)["id"]
+
+    assert alice.get(f"/recipes/{rid}/steps/10000/image").status_code == 404
+
+
+@pytest.mark.parametrize("failing", ["write", "replace"])
+def test_a_failed_write_leaves_no_files(monkeypatch, failing):
+    from app.services import media
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    if failing == "write":
+        monkeypatch.setattr(Path, "write_bytes", boom)
+    else:
+        monkeypatch.setattr(media.os, "replace", boom)
+
+    with pytest.raises(OSError):
+        media.save_image(JPEG)
+
+    assert media_files() == set()

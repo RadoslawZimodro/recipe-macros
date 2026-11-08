@@ -5,6 +5,7 @@ MEDIA_DIR. Names are never taken from a URL or from the client, so there is no p
 """
 
 import logging
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -46,7 +47,15 @@ def save_image(data: bytes) -> StoredImage | None:
     directory = Path(get_settings().media_dir)
     directory.mkdir(parents=True, exist_ok=True)
     name = f"{uuid.uuid4().hex}.{ext}"
-    (directory / name).write_bytes(data)
+    # Write next to the target and rename: a crash never leaves a half-written picture under a
+    # servable name. "<name>.tmp" does not match _NAME, so it is never served or deleted as one.
+    tmp = directory / f"{name}.tmp"
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, directory / name)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return StoredImage(name, content_type)
 
 
