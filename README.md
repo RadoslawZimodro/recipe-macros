@@ -68,7 +68,7 @@ docker run --rm -v <project>_media:/media:ro -v "$PWD":/backup alpine:3.20 tar c
 docker run --rm -v <project>_media:/media -v "$PWD":/backup alpine:3.20 tar xzf /backup/media.tgz -C /media
 ```
 
-In Git Bash on Windows prefix both commands with `MSYS_NO_PATHCONV=1`.
+In Git Bash on Windows prefix both commands with `MSYS_NO_PATHCONV=1` and replace `"$PWD"` with `"$(pwd -W)"`.
 
 ### Pre-commit (on the host)
 
