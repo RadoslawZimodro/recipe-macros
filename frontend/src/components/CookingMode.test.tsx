@@ -128,6 +128,7 @@ describe('CookingMode', () => {
     expect(screen.getByText('Krok 1 z 3')).toBeInTheDocument() // reopens at the first step
     await user.click(screen.getByRole('dialog')) // the dialog element itself is the backdrop
     expect(screen.queryByText('Krok 1 z 3')).not.toBeInTheDocument()
+    expect(opener).toHaveFocus()
   })
 
   it('restores the previous body overflow after closing and after unmounting', async () => {
@@ -157,6 +158,16 @@ describe('CookingMode', () => {
       <CookingMode open onClose={() => {}} title="X" steps={[]} ingredients={[]} opener={{ current: null }} />,
     )
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('clamps to the last step when the steps shrink while open', async () => {
+    const user = userEvent.setup()
+    const props = { open: true, onClose: () => {}, title: 'X', ingredients: INGREDIENTS, opener: { current: null } }
+    const { rerender } = render(<CookingMode {...props} steps={STEPS} />)
+    await user.click(screen.getByRole('button', { name: 'Krok 3' }))
+    rerender(<CookingMode {...props} steps={STEPS.slice(0, 2)} />)
+    expect(screen.getByText('Krok 2 z 2')).toBeInTheDocument()
+    expect(screen.getByText('Podsmaż cebulę.')).toBeInTheDocument()
   })
 
   it('remembers a failed photo per URL', async () => {

@@ -35,13 +35,17 @@ export function CookingMode({ open, onClose, title, steps, ingredients, opener }
   const [index, setIndex] = useState(0)
   const active = open && steps.length > 0
   const last = steps.length - 1
+  const current = Math.min(index, last) // steps may shrink while open (refetch)
   const go = (i: number) => setIndex(Math.min(last, Math.max(0, i)))
 
   useEffect(() => {
     const dialog = ref.current
     if (!dialog) return
     if (active && !dialog.open) dialog.showModal()
-    if (!active && dialog.open) dialog.close()
+    if (!active && dialog.open) {
+      dialog.close()
+      opener.current?.focus() // only works after close(): a modal dialog makes the page inert
+    }
     if (!active) return
     // The native modal does not lock page scrolling; restore whatever was there before.
     const previous = document.body.style.overflow
@@ -49,12 +53,11 @@ export function CookingMode({ open, onClose, title, steps, ingredients, opener }
     return () => {
       document.body.style.overflow = previous
     }
-  }, [active])
+  }, [active, opener])
 
   function close() {
     setIndex(0)
     onClose()
-    opener.current?.focus()
   }
 
   if (steps.length === 0) return null
@@ -69,8 +72,8 @@ export function CookingMode({ open, onClose, title, steps, ingredients, opener }
       }}
       // On the dialog, not an inner element, so arrows work wherever focus is inside it.
       onKeyDown={(e) => {
-        if (e.key === 'ArrowLeft') go(index - 1)
-        if (e.key === 'ArrowRight') go(index + 1)
+        if (e.key === 'ArrowLeft') go(current - 1)
+        if (e.key === 'ArrowRight') go(current + 1)
       }}
       onClick={(e) => {
         if (e.target === ref.current) close() // click on the backdrop, not on the content
@@ -83,7 +86,7 @@ export function CookingMode({ open, onClose, title, steps, ingredients, opener }
           title={title}
           steps={steps}
           ingredients={ingredients}
-          index={index}
+          index={current}
           go={go}
           onClose={close}
         />
