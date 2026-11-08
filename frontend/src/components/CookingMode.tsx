@@ -78,7 +78,7 @@ export function CookingMode({ open, onClose, title, steps, ingredients, opener }
       onClick={(e) => {
         if (e.target === ref.current) close() // click on the backdrop, not on the content
       }}
-      className="m-0 h-dvh max-h-none w-full max-w-none border-0 bg-surface p-0 text-ink backdrop:bg-canvas/80 sm:m-auto sm:h-auto sm:max-h-[90dvh] sm:max-w-3xl sm:rounded-lg sm:border sm:border-line"
+      className="m-0 h-dvh max-h-none w-full max-w-none border-0 bg-surface p-0 text-ink backdrop:bg-canvas/80 sm:m-auto sm:h-[min(90dvh,44rem)] sm:max-w-3xl sm:rounded-lg sm:border sm:border-line"
     >
       {open && (
         <CookingBody
@@ -117,6 +117,12 @@ function CookingBody({
   const step = steps[index]
   const imageUrl = safeImage(step.image_url)
   const showImage = imageUrl !== null && !failed.has(imageUrl)
+  const textRef = useRef<HTMLDivElement>(null)
+
+  // The text area scrolls inside a fixed-height modal; a new step starts at its top.
+  useEffect(() => {
+    if (textRef.current) textRef.current.scrollTop = 0
+  }, [index])
 
   // Warm the cache so the next photo is there when "Dalej" is pressed.
   useEffect(() => {
@@ -125,8 +131,8 @@ function CookingBody({
   }, [index, steps])
 
   return (
-    <div className="flex h-full max-h-[inherit] flex-col gap-4 overflow-y-auto p-4 sm:p-6">
-      <header className="flex items-start justify-between gap-4">
+    <div className="flex h-full flex-col gap-4 overflow-hidden p-4 sm:p-6">
+      <header className="flex shrink-0 items-start justify-between gap-4">
         <h2 id={titleId} className="text-h3">
           {title}
         </h2>
@@ -135,7 +141,7 @@ function CookingBody({
         </Button>
       </header>
 
-      <div className="space-y-2">
+      <div className="shrink-0 space-y-2">
         <p className="text-small tabular-nums text-ink-2">
           Krok {index + 1} z {steps.length}
         </p>
@@ -154,25 +160,32 @@ function CookingBody({
         </div>
       </div>
 
-      <div aria-live="polite" className="flex-1 space-y-4">
+      {/* The slot is always reserved, so steps with and without a photo have the same layout. */}
+      <div
+        data-testid="step-photo-slot"
+        className="relative aspect-video max-h-[28dvh] w-full shrink-0 self-center overflow-hidden rounded-md border border-line bg-inset"
+      >
         {showImage && (
           <img
             key={imageUrl}
             src={imageSrc(imageUrl)}
             alt={`Zdjęcie do kroku ${index + 1}`}
             onError={() => setFailed((prev) => new Set(prev).add(imageUrl))}
-            className="aspect-video max-h-[40dvh] w-full rounded-md border border-line bg-inset object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
           />
         )}
+      </div>
+
+      <div ref={textRef} aria-live="polite" className="min-h-16 flex-1 overflow-y-auto">
         <p className="max-w-reading text-h3 leading-relaxed">{step.instruction}</p>
       </div>
 
-      <details className="rounded-md border border-line bg-raised px-4 text-ink-2">
+      <details className="shrink-0 rounded-md border border-line bg-raised px-4 text-ink-2">
         <summary className="cursor-pointer rounded-sm py-3 font-medium text-ink">Składniki</summary>
         {ingredients.length === 0 ? (
           <p className="pb-3 text-small">Ten przepis nie ma składników.</p>
         ) : (
-          <ul className="list-disc space-y-1 pb-3 pl-6">
+          <ul className="max-h-[25dvh] list-disc space-y-1 overflow-y-auto pb-3 pl-6">
             {ingredients.map((line) => (
               <li key={line.id}>{line.raw_text}</li>
             ))}
@@ -180,7 +193,7 @@ function CookingBody({
         )}
       </details>
 
-      <nav aria-label="Kroki" className="flex flex-wrap gap-1">
+      <nav aria-label="Kroki" className="flex shrink-0 flex-wrap gap-1">
         {steps.map((s, i) => (
           <button
             key={s.position}
@@ -198,7 +211,7 @@ function CookingBody({
         ))}
       </nav>
 
-      <div className="flex justify-between gap-2">
+      <div className="flex shrink-0 justify-between gap-2">
         <Button variant="secondary" onClick={() => go(index - 1)} disabled={index === 0}>
           Wstecz
         </Button>

@@ -139,7 +139,8 @@ The interface is in Polish (code and comments stay in English) and dark only (se
   the step photo if there is one, Wstecz / Dalej / Zakończ, numbered buttons to jump, and a collapsed
   "Składniki" panel. Arrow keys change the step, Escape or a click on the backdrop closes it, page
   scrolling is locked and focus returns to the opening button. A photo that fails to load is hidden
-  and the step shows without it; the next photo is preloaded.
+  and the step shows without it; the next photo is preloaded. The dialog has a fixed height
+  (a reserved photo slot, scrollable step text, footer pinned to the bottom), so it never jumps between steps.
   Step photos: the API returns `image_url` relative to itself (`/recipes/12/steps/3/image`); the
   frontend prefixes `VITE_API_URL`, the same base as every API call. The app and the API differ
   only by port (`localhost:5180` / `localhost:8010`), which is the same site, so the browser sends

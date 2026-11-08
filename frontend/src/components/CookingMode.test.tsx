@@ -187,4 +187,26 @@ describe('CookingMode', () => {
     await user.click(screen.getByRole('button', { name: 'Krok 2' }))
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
+
+  it('keeps a fixed-height dialog and a photo slot on every step, with or without a photo', async () => {
+    const user = await openDialog()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveClass('h-dvh', 'sm:h-[min(90dvh,44rem)]')
+    const slot = screen.getByTestId('step-photo-slot')
+    expect(slot).toBeInTheDocument() // step 1 has no photo
+    await user.click(screen.getByRole('button', { name: 'Dalej' }))
+    expect(screen.getByTestId('step-photo-slot')).toContainElement(screen.getByRole('img'))
+    fireEvent.error(screen.getByRole('img'))
+    expect(screen.getByTestId('step-photo-slot')).toBeInTheDocument()
+    expect(dialog).toHaveClass('h-dvh', 'sm:h-[min(90dvh,44rem)]')
+  })
+
+  it('scrolls the step text back to the top when the step changes', async () => {
+    const user = await openDialog()
+    const text = screen.getByText('Pokrój cebulę.').parentElement!
+    expect(text).toHaveClass('overflow-y-auto')
+    text.scrollTop = 80
+    await user.click(screen.getByRole('button', { name: 'Dalej' }))
+    expect(text.scrollTop).toBe(0)
+  })
 })
