@@ -53,7 +53,7 @@ class ImageFetcher(FakeFetcher):
         self.images = images
         self.image_calls = []
 
-    def fetch_image(self, url):
+    def fetch_image(self, url, *, timeout=None):
         self.image_calls.append(url)
         data = self.images.get(url, FetchError("not_found", "gone"))
         if isinstance(data, FetchError):
@@ -266,7 +266,7 @@ def test_refresh_replaces_pictures_and_deletes_old_files(alice, web):
     fetcher = web({URL: TWO}, BOTH)
     do_import(alice)
     old = media_files()
-    fetcher.pages[URL] = steps_page(("Pokrój.", IMG + "c.gif"), ("Ugotuj.", None))
+    fetcher.pages[URL] = steps_page(("Pokrój.", IMG + "c.gif"), ("Ugotuj dłużej.", None))
     fetcher.images[IMG + "c.gif"] = GIF
 
     body = do_import(alice, refresh=True).json()
@@ -355,3 +355,111 @@ def test_database_refuses_a_path_that_is_not_a_generated_name(alice, admin_db):
             {"r": rid},
         )
     admin_db.rollback()
+
+
+# --- review follow-ups ---
+def test_names_are_matched_in_full(alice, web):
+    from app.services.media import delete_images, image_file
+
+    web({URL: TWO}, BOTH)
+    do_import(alice)
+    (name, *_) = sorted(media_files())
+
+    assert image_file(name) is not None
+    assert image_file(name + "\n") is None
+    delete_images([name + "\n"])
+    assert name in media_files()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/recipes/1/steps/99999999999/image",
+        "/recipes/99999999999/steps/1/image",
+        "/recipes/1/steps/0/image",
+    ],
+)
+def test_out_of_range_ids_are_rejected_not_a_server_error(alice, path):
+    assert alice.get(path).status_code == 422
+
+
+def test_image_response_headers(alice, web):
+    web({URL: TWO}, BOTH)
+    rid = do_import(alice).json()["recipe"]["id"]
+
+    headers = alice.get(f"/recipes/{rid}/steps/1/image").headers
+
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["cache-control"] == "private, max-age=86400"
+    assert headers["content-security-policy"] == "default-src 'none'; sandbox"
+
+
+def test_fetch_image_rejects_a_gzip_bomb(monkeypatch):
+    import gzip
+
+    monkeypatch.setattr(get_settings(), "image_max_bytes", 100_000)
+    bomb = gzip.compress(JPEG + b"\0" * 1_000_000)
+    assert len(bomb) < 100_000  # small on the wire, huge after decompression
+    fetcher = image_fetcher(
+        lambda r: httpx2.Response(200, content=bomb, headers={"content-encoding": "gzip"})
+    )
+
+    with pytest.raises(FetchError) as exc:
+        fetcher.fetch_image("https://cdn.example.com/a.jpg")
+    assert exc.value.code == "too_large"
+
+
+def test_fetch_image_honours_a_shorter_total_timeout():
+    import time
+
+    def slow(request):
+        def chunks():
+            for _ in range(10):
+                time.sleep(0.1)
+                yield b"x" * 10
+
+        return httpx2.Response(200, content=chunks())
+
+    fetcher = image_fetcher(slow)
+
+    with pytest.raises(FetchError) as exc:
+        fetcher.fetch_image("https://cdn.example.com/a.jpg", timeout=0.25)
+    assert exc.value.code == "timeout"
+
+
+def test_image_phase_has_a_hard_time_ceiling(alice, web, monkeypatch):
+    import time
+
+    monkeypatch.setattr(get_settings(), "image_total_budget_sec", 0.25)
+    fetcher = web({URL: TWO}, BOTH)
+    timeouts = []
+    original = fetcher.fetch_image
+
+    def slow(url, *, timeout=None):
+        timeouts.append(timeout)
+        time.sleep(0.3)
+        return original(url)
+
+    fetcher.fetch_image = slow
+
+    body = do_import(alice).json()
+
+    assert len(timeouts) == 1 and timeouts[0] <= 0.25  # the second picture never started
+    assert "1 step picture" in body["notice"]
+    assert [s["image_url"] is not None for s in body["recipe"]["steps"]] == [True, False]
+
+
+def test_refresh_keeps_the_old_picture_when_the_download_fails(alice, web):
+    fetcher = web({URL: TWO}, BOTH)
+    first = do_import(alice).json()["recipe"]
+    old = media_files()
+    fetcher.images[IMG + "a.jpg"] = FetchError("timeout", "slow")  # step 1 fails
+    fetcher.images[IMG + "b.png"] = GIF  # step 2 is replaced
+
+    body = do_import(alice, refresh=True).json()
+
+    assert [s["image_url"] is not None for s in body["recipe"]["steps"]] == [True, True]
+    assert alice.get(f"/recipes/{first['id']}/steps/1/image").content == JPEG
+    assert alice.get(f"/recipes/{first['id']}/steps/2/image").content == GIF
+    files = media_files()
+    assert len(files) == 2 and len(files & old) == 1  # old step-1 file kept, old step-2 deleted

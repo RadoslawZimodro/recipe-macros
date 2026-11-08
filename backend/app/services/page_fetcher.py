@@ -53,7 +53,7 @@ class PageFetcher:
             self._cache.set_page(url, page)
         return page
 
-    def fetch_image(self, url: str) -> FetchedPage:
+    def fetch_image(self, url: str, *, timeout: float | None = None) -> FetchedPage:
         """Fetch one step picture: same SSRF-safe transport, its own size limit, no cache.
         The type is NOT checked here (a header can lie); see media.detect_image.
         robots.txt is not consulted: the page was allowed and its pictures are part of it."""
@@ -64,6 +64,7 @@ class PageFetcher:
             max_bytes=get_settings().image_max_bytes,
             resolver=self._resolver,
             transport=self._transport,
+            total_timeout=timeout,
         )
 
     def _check_robots(self, hop_url: str) -> None:

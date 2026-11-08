@@ -27,14 +27,15 @@ def download_step_images(
         if url is None:
             stored.append(None)
             continue
-        if attempted >= settings.image_max_per_recipe or time.monotonic() > deadline:
+        remaining = deadline - time.monotonic()
+        if attempted >= settings.image_max_per_recipe or remaining <= 0:
             stored.append(None)
             skipped += 1
             continue
         attempted += 1
         image = None
         try:
-            image = save_image(fetcher.fetch_image(url).body)
+            image = save_image(fetcher.fetch_image(url, timeout=remaining).body)
         except FetchError as exc:
             logger.info("step_image_failed code=%s", exc.code)
         except OSError:

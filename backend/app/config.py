@@ -54,7 +54,8 @@ class Settings(BaseSettings):
     import_rate_limit_per_min: int = 10  # imports that reach the network, per user
 
     # --- Recipe import: step images (local copies) ---
-    media_dir: str = "/media"  # outside /app on purpose: /app is a bind mount in dev
+    # Fallback outside compose; docker-compose sets MEDIA_DIR=/app/media (the `media` volume).
+    media_dir: str = "/media"
     image_max_bytes: int = 5 * 1024 * 1024  # per file, counted after decompression
     image_max_per_recipe: int = 30
     image_total_budget_sec: float = 60.0  # all step images of one import; the rest is skipped

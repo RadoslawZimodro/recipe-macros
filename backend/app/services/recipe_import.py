@@ -135,13 +135,23 @@ def _save(
             "import_method": extracted.method,
         },
     ).one()
-    old_files = list(
-        session.scalars(
-            select(RecipeStep.image_path).where(
-                RecipeStep.recipe_id == row.id, RecipeStep.image_path.is_not(None)
-            )
-        )
-    )
+    old = session.execute(
+        select(
+            RecipeStep.position,
+            RecipeStep.instruction,
+            RecipeStep.image_path,
+            RecipeStep.image_content_type,
+        ).where(RecipeStep.recipe_id == row.id, RecipeStep.image_path.is_not(None))
+    ).all()
+    # A step with no new picture (download failed, or the page has none) keeps its old one
+    # while its position and text are unchanged; same rule as replace_recipe.
+    images = dict(images)
+    for pos, instruction, path, content_type in old:
+        step = recipe.steps[pos - 1] if pos <= len(recipe.steps) else None
+        if pos not in images and step is not None and step.instruction == instruction:
+            images[pos] = StoredImage(path, content_type)
+    used = {img.name for img in images.values()}
+    old_files = [path for _, _, path, _ in old if path not in used]
     # On a refresh the old children go first; the (recipe_id, position) keys would collide.
     session.execute(delete(RecipeStep).where(RecipeStep.recipe_id == row.id))
     session.execute(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == row.id))

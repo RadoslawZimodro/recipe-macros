@@ -411,13 +411,16 @@ never send `image_url` (the step body of `POST`/`PUT` has only `instruction`), s
 be injected.
 
 - **Download.** Through the same SSRF-safe fetcher as pages (pinned IP, redirects re-validated), but
-  with its own limits: 5 MB per file, 30 pictures per recipe, 60 s for all pictures of one import,
-  the usual connect/read timeouts. robots.txt is not consulted again for pictures (the page itself was
+  with its own limits: 5 MB per file (after decompression), 30 pictures per recipe, the usual
+  connect/read timeouts, and a hard 60 s ceiling for the whole picture phase: each download gets only
+  the time that is left (never more than the normal 15 s), and pictures still waiting when the time runs
+  out are skipped and counted in the `notice`. robots.txt is not consulted again for pictures (the page itself was
   allowed).
 - **Type by content.** The first bytes decide (JPEG, PNG, WebP, GIF), not the `Content-Type` header or
   the extension, so an SVG (which can carry scripts) or an HTML file renamed to `.jpg` is rejected.
-- **Names.** Files are saved as `<uuid hex>.<ext>` in `MEDIA_DIR` (default `/media`, outside the
-  `/app` bind mount); the name never comes from a URL, so there is no path traversal. The database
+- **Names.** Files are saved as `<uuid hex>.<ext>` in `MEDIA_DIR` (in compose it is
+  `/app/media`, the `media` volume, see "Media volume"; the code's default `/media` is only a fallback
+  when running outside compose); the name never comes from a URL, so there is no path traversal. The database
   stores only that name and a CHECK constraint enforces its shape.
 - **Schema.** Two nullable columns on `recipe_steps` (a step has at most one picture) instead of a new
   table: the existing Row-Level Security policy and the composite foreign key to the recipe apply
@@ -430,6 +433,8 @@ be injected.
 - **Files follow the database.** `refresh` replaces the pictures and deletes the old files; a failed
   save deletes the new files. `PUT /recipes/{id}` keeps a picture only for a step that has the same
   position *and* the same text as before; other pictures are removed together with their files.
+  `refresh` follows the same rule: a step whose new picture failed to download (or that has none now)
+  keeps its old picture while its position and text are unchanged.
   Soft delete leaves the files (the recipe can still be referenced by the food log).
 
 ## AI import

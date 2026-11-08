@@ -217,6 +217,7 @@ def safe_get(
     before_hop: Callable[[str], None] | None = None,
     resolver: Resolver = system_resolver,
     transport: httpx2.BaseTransport | None = None,
+    total_timeout: float | None = None,
 ) -> FetchedPage:
     """GET `url`, following up to `fetch_max_redirects` redirects with every hop re-validated.
 
@@ -225,7 +226,11 @@ def safe_get(
     """
     settings = get_settings()
     limit = max_bytes or settings.fetch_max_bytes
-    deadline = time.monotonic() + settings.fetch_total_timeout_sec
+    # `total_timeout` can only shorten the budget (used to cap a whole phase, e.g. step images).
+    budget = min(
+        settings.fetch_total_timeout_sec, total_timeout or settings.fetch_total_timeout_sec
+    )
+    deadline = time.monotonic() + budget
     current = url
 
     for _ in range(settings.fetch_max_redirects + 1):

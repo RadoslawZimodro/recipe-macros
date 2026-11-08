@@ -52,7 +52,7 @@ def save_image(data: bytes) -> StoredImage | None:
 
 def image_file(name: str) -> Path | None:
     """The path of a stored image, or None if the name is malformed or the file is gone."""
-    if not _NAME.match(name):
+    if not _NAME.fullmatch(name):
         return None
     path = Path(get_settings().media_dir) / name
     return path if path.is_file() else None
@@ -61,7 +61,7 @@ def image_file(name: str) -> Path | None:
 def delete_images(names: list[str]) -> None:
     """Best effort: a file that cannot be removed is logged, never raised (the DB is the truth)."""
     for name in names:
-        if not _NAME.match(name):
+        if not _NAME.fullmatch(name):
             continue
         try:
             (Path(get_settings().media_dir) / name).unlink(missing_ok=True)
