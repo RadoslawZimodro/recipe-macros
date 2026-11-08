@@ -92,6 +92,7 @@ describe('CookingMode', () => {
       render(<Harness steps={steps} />)
       await user.click(screen.getByRole('button', { name: 'Tryb gotowania' }))
       expect(screen.queryByRole('img')).not.toBeInTheDocument()
+      expect(screen.getByTestId('step-photo-slot')).toBeEmptyDOMElement()
       expect(screen.getByText('Pierwszy.')).toBeInTheDocument()
     },
   )
@@ -208,5 +209,22 @@ describe('CookingMode', () => {
     text.scrollTop = 80
     await user.click(screen.getByRole('button', { name: 'Dalej' }))
     expect(text.scrollTop).toBe(0)
+  })
+
+  it('scrolls the active step button into view and keeps navigation in the footer', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      const user = await openDialog()
+      await user.click(screen.getByRole('button', { name: 'Dalej' }))
+      const active = screen.getByRole('button', { name: 'Krok 2' })
+      expect(scrollIntoView.mock.contexts).toContain(active)
+      const footer = screen.getByRole('contentinfo')
+      expect(footer).toContainElement(screen.getByRole('button', { name: 'Dalej' }))
+      expect(footer).toContainElement(screen.getByRole('navigation', { name: 'Kroki' }))
+    } finally {
+      // @ts-expect-error restore jsdom's lack of scrollIntoView
+      delete Element.prototype.scrollIntoView
+    }
   })
 })
