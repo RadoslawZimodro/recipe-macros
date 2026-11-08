@@ -18,7 +18,12 @@ SELECT
     r.updated_at,
     COALESCE((
         SELECT json_agg(
-            json_build_object('position', s.position, 'instruction', s.instruction)
+            json_build_object(
+                'position', s.position,
+                'instruction', s.instruction,
+                'image_url', CASE WHEN s.image_path IS NOT NULL
+                    THEN '/recipes/' || r.id || '/steps/' || s.position || '/image' END
+            )
             ORDER BY s.position
         )
         FROM recipe_steps s
