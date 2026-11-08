@@ -55,15 +55,15 @@ export function IngredientSearch({ label, onPick, excludeIds = NO_IDS, disabled,
         {text.trim().length > 0 && (
           <>
             {/* Before the first response for the typed text, show progress instead of a stale "empty". */}
-            {(term === '' || search.isPending) && <p className="text-sm text-slate-500">Szukam…</p>}
+            {(term === '' || search.isPending) && <p className="text-small text-ink-3">Szukam…</p>}
             {search.isError && <ErrorMessage message={describeError(search.error)} />}
             {current && search.isSuccess && results.length === 0 && (
-              <p className="text-sm text-slate-500">Brak pasujących produktów.</p>
+              <p className="text-small text-ink-3">Brak pasujących produktów.</p>
             )}
             {results.length > 0 && (
               <ul
                 aria-label="Wyniki wyszukiwania"
-                className="divide-y divide-slate-200 rounded-md border border-slate-200 dark:divide-slate-700 dark:border-slate-700"
+                className="divide-y divide-line-soft rounded-md border border-line bg-surface"
               >
                 {results.map((item) => (
                   <li key={item.id}>
@@ -74,11 +74,11 @@ export function IngredientSearch({ label, onPick, excludeIds = NO_IDS, disabled,
                         onPick(item)
                         setText('')
                       }}
-                      className="flex w-full justify-between px-3 py-2 text-left hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+                      className="flex min-h-10 w-full items-center justify-between gap-4 px-3 py-2 text-left transition-[background-color] duration-150 ease-soft hover:bg-raised disabled:cursor-not-allowed disabled:text-ink-4"
                     >
                       <span>{item.canonical_name}</span>
                       {showKcal && (
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                        <span className="text-caption text-ink-3 tabular-nums">
                           {item.kcal_per_100g} kcal/100 g
                         </span>
                       )}

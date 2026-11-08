@@ -236,7 +236,7 @@ describe('pantry page', () => {
 
     await user.click(screen.getByRole('button', { name: 'Usuń Mąka' }))
     const alert = await screen.findByText('Nie znaleziono.')
-    expect(alert).toHaveAttribute('role', 'alert')
+    expect(alert.closest('[role="alert"]')).not.toBeNull()
     expect(screen.getAllByRole('alert')).toHaveLength(1)
   })
 })

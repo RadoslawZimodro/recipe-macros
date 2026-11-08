@@ -9,7 +9,11 @@ import {
   type PantryItem,
 } from '../../api/pantry'
 import { describeError } from '../../api/messages'
+import { ErrorMessage } from '../../components/Field'
 import { IngredientSearch } from '../../components/IngredientSearch'
+import { Chip } from '../../components/ui/Chip'
+import { EmptyState } from '../../components/ui/EmptyState'
+import { Spinner } from '../../components/ui/Spinner'
 
 function Status({
   query,
@@ -20,18 +24,18 @@ function Status({
   empty: string
   isEmpty: boolean
 }) {
-  if (query.isPending) return <p className="text-sm text-slate-500">Ładowanie…</p>
-  if (query.isError) {
+  if (query.isPending) {
     return (
-      <div role="alert" className="text-sm text-red-600 dark:text-red-400">
-        {describeError(query.error)}{' '}
-        <button type="button" className="underline" onClick={() => void query.refetch()}>
-          Spróbuj ponownie
-        </button>
-      </div>
+      <p className="flex items-center gap-2 text-small text-ink-2">
+        <Spinner />
+        Ładowanie…
+      </p>
     )
   }
-  return isEmpty ? <p className="text-sm text-slate-500">{empty}</p> : null
+  if (query.isError) {
+    return <ErrorMessage message={describeError(query.error)} onRetry={() => void query.refetch()} />
+  }
+  return isEmpty ? <EmptyState title={empty} /> : null
 }
 
 function ItemList({
@@ -46,20 +50,10 @@ function ItemList({
   return (
     <ul className="flex flex-wrap gap-2">
       {items.map((item) => (
-        <li
-          key={item.ingredient_id}
-          className="flex items-center gap-2 rounded-full border border-slate-300 bg-white py-1 pl-3 pr-1 text-sm dark:border-slate-600 dark:bg-slate-800"
-        >
-          {item.name}
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label={`Usuń ${item.name}`}
-            onClick={() => onRemove(item)}
-            className="rounded-full px-2 hover:bg-slate-200 disabled:opacity-50 dark:hover:bg-slate-700"
-          >
-            ×
-          </button>
+        <li key={item.ingredient_id}>
+          <Chip onRemove={() => onRemove(item)} removeLabel={`Usuń ${item.name}`} removeDisabled={disabled}>
+            {item.name}
+          </Chip>
         </li>
       ))}
     </ul>
@@ -76,8 +70,8 @@ export function PantrySection() {
   const items = pantry.data ?? []
 
   return (
-    <section aria-labelledby="pantry-heading" className="space-y-3">
-      <h2 id="pantry-heading" className="text-xl font-semibold">
+    <section aria-labelledby="pantry-heading" className="space-y-4">
+      <h2 id="pantry-heading" className="text-h3">
         Moje produkty
       </h2>
       <IngredientSearch
@@ -90,9 +84,7 @@ export function PantrySection() {
         }}
       />
       {(add.isError || remove.isError) && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-          {describeError(remove.error ?? add.error)}
-        </p>
+        <ErrorMessage message={describeError(remove.error ?? add.error)} />
       )}
       <Status
         query={pantry}
@@ -126,11 +118,11 @@ export function StaplesSection() {
   const defaults = staples.data?.defaults ?? []
 
   return (
-    <section aria-labelledby="staples-heading" className="space-y-3">
-      <h2 id="staples-heading" className="text-xl font-semibold">
+    <section aria-labelledby="staples-heading" className="space-y-4">
+      <h2 id="staples-heading" className="text-h3">
         Zawsze w domu
       </h2>
-      <p className="text-sm text-slate-600 dark:text-slate-300">
+      <p className="text-small text-ink-2">
         Te produkty (np. sól, woda) liczą się jako dostępne w każdym przepisie.
       </p>
       <IngredientSearch
@@ -143,9 +135,7 @@ export function StaplesSection() {
         }}
       />
       {(add.isError || remove.isError) && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-          {describeError(remove.error ?? add.error)}
-        </p>
+        <ErrorMessage message={describeError(remove.error ?? add.error)} />
       )}
       <Status query={staples} isEmpty={own.length === 0} empty="Nie dodano własnych produktów." />
       <ItemList
@@ -157,7 +147,7 @@ export function StaplesSection() {
         }}
       />
       {defaults.length > 0 && (
-        <p className="text-sm text-slate-500">Domyślnie: {defaults.join(', ')}.</p>
+        <p className="text-small text-ink-3">Domyślnie: {defaults.join(', ')}.</p>
       )}
     </section>
   )
