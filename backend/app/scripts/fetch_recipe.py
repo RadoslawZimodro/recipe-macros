@@ -124,6 +124,7 @@ def main(argv: list[str]) -> int:
             "fetched": {"final_url": page.final_url, "bytes": len(page.body)},
             "recipe": extracted.recipe.model_dump(mode="json"),
             "source_nutrition": extracted.source_nutrition,
+            "step_images": list(extracted.step_images),
         }
         print(json.dumps(output, ensure_ascii=False, indent=2))
     return _run_ai(page, extracted) if use_ai else 0

@@ -36,7 +36,7 @@ MAX_INGREDIENTS = 200
 _LD_JSON = re.compile(r"^\s*application/ld\+json", re.IGNORECASE)
 _BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _SPACES = re.compile(r"[ \t\r\f\v ​]+")
-_STEP_NUMBER = re.compile(r"^\s*(?:krok|step)?\s*\d{1,2}\s*[.):]\s+", re.IGNORECASE)
+STEP_NUMBER = re.compile(r"^\s*(?:krok|step)?\s*\d{1,2}\s*[.):]\s+", re.IGNORECASE)
 _DURATION = re.compile(
     r"^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:[.,]\d+)?)S)?)?$",
     re.IGNORECASE,
@@ -140,9 +140,9 @@ def _collect_steps(value: Any, out: list[tuple[str, Any]], depth: int = 0) -> No
             _collect_steps(value.get("itemListElement"), out, depth + 1)
         else:  # HowToStep: prefer its text, fall back to its name
             lines = _clean_lines(value.get("text") or value.get("name"))
-            # A picture belongs to the step as a whole: with several lines it is ambiguous.
-            image = value.get("image") if len(lines) == 1 else None
-            out.extend((line, image) for line in lines)
+            # The picture illustrates the whole step; its first line is the start of that step.
+            image = value.get("image")
+            out.extend((line, image if i == 0 else None) for i, line in enumerate(lines))
 
 
 def _steps(value: Any, base_url: str) -> tuple[list[StepIn], list[str | None]]:
@@ -152,7 +152,7 @@ def _steps(value: Any, base_url: str) -> tuple[list[StepIn], list[str | None]]:
     steps: list[str] = []
     images: list[str | None] = []
     for line, image in pairs:
-        line = _STEP_NUMBER.sub("", line).strip()
+        line = STEP_NUMBER.sub("", line).strip()
         if line and (not steps or steps[-1] != line):
             steps.append(line[:5000])
             images.append(_image_url(image, base_url) if image else None)
