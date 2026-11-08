@@ -48,7 +48,7 @@ function Progress({
           style={{ width: `${Math.min(100, progress.percent)}%` }}
         />
       </div>
-      <p className="pt-1 text-caption text-ink-3 tabular-nums">
+      <p className="pt-1 text-small text-ink-2 tabular-nums">
         {over
           ? `Przekroczono o ${fmt(-progress.remaining)} ${unit}`
           : `Zostało ${fmt(progress.remaining)} ${unit}`}{' '}
@@ -66,10 +66,10 @@ export function DaySummary({ totals }: { totals: DayTotals }) {
         <Progress label="Kalorie" unit="kcal" progress={totals.kcal} eaten={totals.total.kcal} />
         <Progress label="Białko" unit="g" progress={totals.protein} eaten={totals.total.protein} />
       </div>
-      <p className="text-small text-ink-2 tabular-nums">
+      <p className="text-small font-medium text-ink-2 tabular-nums">
         Tłuszcze: {fmt(totals.total.fat)} g · Węglowodany: {fmt(totals.total.carbs)} g
       </p>
-      <p className="text-caption text-ink-3">
+      <p className="border-t border-line-soft pt-4 text-caption text-ink-3">
         Wartości są szacunkowe
         {totals.is_estimate ? ' (część pochodzi z oszacowania AI)' : ''}.
         {!totals.complete && ' Suma jest niepełna: nie wszystkie składniki udało się policzyć.'}
