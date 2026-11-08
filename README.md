@@ -441,9 +441,14 @@ be injected.
   as they are.
 - **A bad picture never breaks an import.** Failure, timeout, rejection or a limit only leaves that
   step without a picture; the answer's `notice` says how many were skipped.
-- **AI keeps pictures only when it is safe.** The AI may merge or split steps. If the number of steps
-  after the AI differs from the number on the page, no pictures are attached: no picture is better
-  than a picture on the wrong step.
+- **AI keeps pictures by matching text.** The AI may merge, split, drop or reword steps, so a picture
+  follows the text, not the position: each page line with a picture is compared with the AI's steps
+  by shared words (case, punctuation and numbering ignored; share of the *shorter* text's words
+  found in the other). It moves only on a match of at least **0.7** (texts under 3 words must be
+  identical, unless the step count is unchanged and the position is the same). A tie between steps
+  that are not neighbours means no picture. A picture goes to one step only, a step gets one picture
+  and order is kept (no crossing). If the AI merged lines, the first picture wins; if it split a
+  line, its first part gets the picture. No picture is better than a picture on the wrong step.
 - **Files follow the database.** `refresh` replaces the pictures and deletes the old files; a failed
   save deletes the new files. `PUT /recipes/{id}` keeps a picture only for a step that has the same
   position *and* the same text as before; other pictures are removed together with their files.

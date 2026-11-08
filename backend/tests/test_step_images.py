@@ -13,6 +13,7 @@ from app.main import app
 from app.routers.recipe_import import get_page_fetcher, get_recipe_ai
 from app.schemas.ai import AIRefinement
 from app.services.ai_extract import RecipeAI
+from app.services.ai_merge import match_step_images, merge_refinement
 from app.services.media import detect_image
 from app.services.page_fetcher import PageFetcher
 from app.services.redis_client import get_redis
@@ -496,13 +497,13 @@ def test_microdata_multiline_steps_put_the_picture_on_the_first_line():
     result = fixture("microdata_multiline_steps.html", base="https://blog.example.test/przepis/")
 
     assert [s.instruction for s in result.recipe.steps] == [
-        "Wymieszaj mąkę.",
-        "Dodaj drożdże.",
+        "Wymieszaj mąkę z solą.",
+        "Dodaj drożdże i mleko.",
         "Wyrabiaj 10 minut.",
-        "Odstaw do wyrośnięcia.",
+        "Odstaw ciasto do wyrośnięcia.",
         "Nakryj ściereczką.",
-        "Piecz 20 minut.",
-        "Podaj.",
+        "Piecz dokładnie 20 minut.",
+        "Podaj gorące cynamonki.",
     ]
     base = "https://blog.example.test/img/"
     assert result.step_images == (
@@ -534,3 +535,78 @@ def test_jsonld_multiline_howtostep_puts_the_picture_on_the_first_line():
         "Smacznego.",
     ]
     assert result.step_images == (IMG + "a.jpg", None, IMG + "b.jpg", None, None)
+
+
+# --- matching pictures to the AI's steps by text ---
+A = "Wymieszaj mąkę z drożdżami i ciepłym mlekiem w dużej misce."
+B = "Odstaw ciasto do wyrośnięcia na godzinę pod ściereczką."
+C = "Rozwałkuj ciasto na prostokąt i posmaruj masłem z cynamonem."
+D = "Zwiń ciasto w rulon, pokrój na kawałki i piecz dwadzieścia minut."
+PAGE = [A, B, C, D]
+PICS = ("a.jpg", "b.jpg", "c.jpg", "d.jpg")
+
+
+@pytest.mark.parametrize(
+    ("ai_steps", "expected"),
+    [
+        pytest.param([A, B, C, D], PICS, id="same"),
+        pytest.param([A, B, C + " Porada: użyj świeżych drożdży.", D], PICS, id="tip-appended"),
+        pytest.param([A + " " + B, C, D], ("a.jpg", "c.jpg", "d.jpg"), id="merge-first-picture"),
+        pytest.param([A, C, D], ("a.jpg", "c.jpg", "d.jpg"), id="line-cut-out"),
+        pytest.param(
+            ["Wymieszaj mąkę z drożdżami", "i ciepłym mlekiem w dużej misce.", B, C, D],
+            ("a.jpg", None, "b.jpg", "c.jpg", "d.jpg"),
+            id="split-first-part",
+        ),
+        pytest.param(
+            [
+                "Wymieszaj mąkę z drożdżami i ciepłym mlekiem w misce.",
+                "Odstaw ciasto na godzinę do wyrośnięcia pod ściereczką.",
+                "Rozwałkuj ciasto na prostokąt, posmaruj masłem i cynamonem.",
+                "Zwiń ciasto w rulon, pokrój i piecz dwadzieścia minut.",
+            ],
+            PICS,
+            id="paraphrase",
+        ),
+        pytest.param(
+            ["Rozgrzej piekarnik.", "Ubij białka na sztywną pianę.", "Dodaj cukier puder."],
+            (),
+            id="rewritten-completely",
+        ),
+        pytest.param([B, A], (None, "a.jpg"), id="swapped-order-no-crossing"),
+    ],
+)
+def test_pictures_follow_the_text_through_the_ai(ai_steps, expected):
+    result = match_step_images(PAGE, tuple(IMG + p for p in PICS), ai_steps)
+
+    assert result == tuple(IMG + p if p else None for p in expected)
+
+
+def test_a_tie_between_distant_steps_gets_no_picture():
+    ai = [A, "Coś innego zupełnie.", A]
+
+    assert match_step_images([A], (IMG + "a.jpg",), ai) == ()
+
+
+def test_aniagotuje_fixture_survives_an_ai_that_merges_the_tip():
+    extracted = fixture("microdata_multiline_steps.html", base="https://blog.example.test/przepis/")
+    ai = AIRefinement(
+        steps=[
+            "Wymieszaj mąkę z solą. Dodaj drożdże i mleko. Wyrabiaj 10 minut."
+            " Porada: użyj ciepłego mleka.",
+            "Odstaw ciasto do wyrośnięcia. Nakryj ściereczką.",
+            "Piecz dokładnie 20 minut.",
+            "Podaj gorące cynamonki.",
+        ],
+        ingredients=[ing(0, qty=300, unit="g", product="mąka")],
+    )
+
+    merged = merge_refinement(extracted, ai, {})
+
+    base = "https://blog.example.test/img/"
+    assert merged.step_images == (
+        base + "s1-1080.jpg",
+        base + "s2-1080.jpg",
+        None,
+        base + "s4-1080.jpg",
+    )

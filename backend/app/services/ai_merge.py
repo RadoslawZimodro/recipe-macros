@@ -5,8 +5,12 @@ Two cases, matching the two AI modes:
     page's markup gave them (deterministic); the AI supplies the cleaned steps and the parsed
     ingredient lines. The original ingredient text always comes from the markup, never from the AI;
   * no structured data: everything comes from the AI's reading of the page text.
+
+Step pictures survive the AI by matching text (see match_step_images), not by step count.
 """
 
+import re
+from collections import Counter
 from decimal import Decimal
 
 from pydantic import ValidationError
@@ -15,9 +19,16 @@ from app.schemas.ai import AIFullRecipe, AIIngredient, AIRefinement
 from app.schemas.recipe import IngredientLineIn, RecipeIn, StepIn
 from app.services.ai_extract import MAX_STEPS, AIInvalidOutput
 from app.services.products import COUNT_UNITS, ProductCandidate, normalize_name
-from app.services.recipe_extractor import ExtractedRecipe
+from app.services.recipe_extractor import _STEP_NUMBER, ExtractedRecipe
 
 METHOD = "llm"  # stored as import_method: the content was produced with AI's help
+
+# A picture moves to an AI step only when at least this share of the SHORTER text's words is found
+# in the other (a merged or split step contains the other, a paraphrase keeps most words).
+# 0.7 is deliberately strict: a missing picture is better than one on the wrong step.
+MATCH_THRESHOLD = 0.7
+TIE_MARGIN = 0.05  # candidates this close to the best are "equally good" (ambiguous)
+MIN_WORDS = 3  # shorter texts must match exactly: two shared words prove nothing (see same_count)
 
 
 def product_candidates(ai: AIRefinement) -> list[ProductCandidate]:
@@ -63,6 +74,55 @@ def _steps(steps: list[str]) -> list[StepIn]:
     return [StepIn(instruction=s.strip()[:5000]) for s in steps if s.strip()][:MAX_STEPS]
 
 
+def _words(text: str) -> Counter[str]:
+    return Counter(re.findall(r"\w+", _STEP_NUMBER.sub("", text).lower()))
+
+
+def _similarity(a: Counter[str], b: Counter[str], min_words: int = MIN_WORDS) -> float:
+    if a == b:
+        return 1.0 if a else 0.0
+    shortest = min(a.total(), b.total())
+    if shortest < min_words:
+        return 0.0
+    return (a & b).total() / shortest
+
+
+def match_step_images(
+    page_steps: list[str], page_images: tuple[str | None, ...], ai_steps: list[str]
+) -> tuple[str | None, ...]:
+    """Move each page picture to the AI step that holds the same text, or drop it.
+
+    A picture goes to at most one step and each step gets at most one picture. Order is kept
+    (no crossing). When the AI merged lines, the first picture wins; when it split a line, the
+    first part gets the picture. A tie between steps that are not neighbours is ambiguous: none.
+    """
+    if not any(page_images):
+        return ()
+    ai_words = [_words(t) for t in ai_steps]
+    result: list[str | None] = [None] * len(ai_steps)
+    last = -1
+    same_count = len(page_steps) == len(ai_steps)
+    for position, (text, image) in enumerate(zip(page_steps, page_images, strict=False)):
+        if not image:
+            continue
+        words = _words(text)
+        # With an unchanged step count the same position backs up even a short text.
+        scores = [
+            _similarity(words, w, 1 if same_count and i == position else MIN_WORDS)
+            for i, w in enumerate(ai_words)
+        ]
+        best = max(scores, default=0.0)
+        if best < MATCH_THRESHOLD:
+            continue
+        close = [i for i, v in enumerate(scores) if v >= best - TIE_MARGIN]
+        if close != list(range(close[0], close[-1] + 1)):
+            continue  # equally good steps that are not neighbours
+        if close[0] > last:  # not after the previous picture's step = merged or crossing
+            result[close[0]] = image
+            last = close[0]
+    return tuple(result) if any(result) else ()
+
+
 def merge_refinement(
     extracted: ExtractedRecipe, ai: AIRefinement, product_ids: dict[str, int]
 ) -> ExtractedRecipe:
@@ -79,9 +139,12 @@ def merge_refinement(
         RecipeIn.model_validate(recipe.model_dump())
     except (ValidationError, IndexError) as exc:
         raise AIInvalidOutput(f"the merged recipe is not valid: {exc}") from None
-    # The AI may merge or split steps. Pictures are kept only when the step count is unchanged
-    # (same positions); otherwise no picture is better than a picture on the wrong step.
-    images = extracted.step_images if len(recipe.steps) == len(original.steps) else ()
+    # The AI may merge, split or drop steps: pictures follow the text, not the position.
+    images = match_step_images(
+        [st.instruction for st in original.steps],
+        extracted.step_images,
+        [st.instruction for st in recipe.steps],
+    )
     return ExtractedRecipe(recipe, extracted.source_nutrition, METHOD, images)
 
 
