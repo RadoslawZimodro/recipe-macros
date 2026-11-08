@@ -3,6 +3,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { describeError } from '../api/messages'
 import { useAuth } from '../auth/AuthProvider'
 import { ErrorMessage, Field } from '../components/Field'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { ACCENT_LINK } from '../components/ui/linkClass'
 
 interface AuthFormProps {
   mode: 'login' | 'register'
@@ -56,8 +59,8 @@ function AuthForm({ mode }: AuthFormProps) {
   }
 
   return (
-    <div className="mx-auto mt-8 max-w-sm rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <h1 className="mb-4 text-xl font-semibold">{text.title}</h1>
+    <Card className="mx-auto mt-8 max-w-sm space-y-6">
+      <h1 className="text-h2">{text.title}</h1>
       <form onSubmit={onSubmit} className="space-y-4">
         <Field
           label="E-mail"
@@ -77,21 +80,17 @@ function AuthForm({ mode }: AuthFormProps) {
           hint={mode === 'register' ? 'Serwer sprawdzi siłę hasła i podpowie, czego brakuje.' : undefined}
         />
         <ErrorMessage message={error} />
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-md bg-emerald-700 px-4 py-2 font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
-        >
+        <Button type="submit" loading={busy} className="w-full">
           {busy ? text.busy : text.submit}
-        </button>
+        </Button>
       </form>
-      <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+      <p className="text-small text-ink-2">
         {text.other}{' '}
-        <Link to={text.otherTo} className="font-medium text-emerald-700 underline dark:text-emerald-400">
+        <Link to={text.otherTo} className={`font-medium ${ACCENT_LINK}`}>
           {text.otherLink}
         </Link>
       </p>
-    </div>
+    </Card>
   )
 }
 

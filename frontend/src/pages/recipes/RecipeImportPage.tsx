@@ -5,6 +5,9 @@ import { ApiError } from '../../api/client'
 import { describeError } from '../../api/messages'
 import { importRecipe } from '../../api/recipes'
 import { ErrorMessage, Field } from '../../components/Field'
+import { Button } from '../../components/ui/Button'
+import { MUTED_LINK } from '../../components/ui/linkClass'
+import { Spinner } from '../../components/ui/Spinner'
 
 // Polish texts for the API's stable import error codes.
 const IMPORT_ERRORS: Record<string, string> = {
@@ -57,8 +60,8 @@ export function RecipeImportPage() {
   }
 
   return (
-    <section className="mx-auto max-w-xl space-y-4">
-      <h1 className="text-2xl font-semibold">Importuj przepis z linku</h1>
+    <section className="max-w-reading space-y-6">
+      <h1 className="text-h1">Importuj przepis z linku</h1>
       <form onSubmit={submit} className="space-y-4">
         <Field
           label="Adres strony z przepisem"
@@ -70,20 +73,17 @@ export function RecipeImportPage() {
           hint="Instagram, TikTok i YouTube nie są obsługiwane."
         />
         {mutation.isPending && (
-          <p role="status" className="text-sm text-slate-600 dark:text-slate-300">
+          <p role="status" className="flex items-center gap-2 text-small text-ink-2">
+            <Spinner />
             Importuję przepis… To może potrwać nawet kilkadziesiąt sekund.
           </p>
         )}
         <ErrorMessage message={mutation.isError ? describeImportError(mutation.error) : null} />
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
-          >
+        <div className="flex items-center gap-4">
+          <Button type="submit" loading={mutation.isPending}>
             {mutation.isPending ? 'Importowanie…' : 'Importuj'}
-          </button>
-          <Link to="/recipes" className="text-sm hover:underline">
+          </Button>
+          <Link to="/recipes" className={`text-small ${MUTED_LINK}`}>
             Wróć do listy
           </Link>
         </div>

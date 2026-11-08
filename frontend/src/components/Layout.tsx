@@ -1,46 +1,44 @@
 import { Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { Button } from './ui/Button'
+import { Nav } from './ui/Nav'
+
+const NAV_ITEMS = [
+  { to: '/recipes', label: 'Przepisy' },
+  { to: '/log', label: 'Dziennik' },
+  { to: '/pantry', label: 'Lodówka' },
+]
 
 export function Layout() {
   const { user, logout } = useAuth()
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
-      <header className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-          <Link to="/" className="text-lg font-semibold">
+    <div className="min-h-screen bg-canvas text-ink">
+      <header className="border-b border-line">
+        {/* Wraps on mobile: brand + logout on the first row, navigation on the second. */}
+        <div className="mx-auto flex min-h-16 max-w-page flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
+          <Link
+            to="/"
+            className="mr-auto font-display text-h4 font-semibold whitespace-nowrap tracking-tight sm:mr-0"
+          >
             Recipe Macros
           </Link>
           {user && (
-            <nav className="flex flex-1 gap-4 text-sm">
-              <Link to="/recipes" className="hover:underline">
-                Przepisy
-              </Link>
-              <Link to="/log" className="hover:underline">
-                Dziennik
-              </Link>
-              <Link to="/pantry" className="hover:underline">
-                Lodówka
-              </Link>
-            </nav>
+            <div className="order-last flex w-full sm:order-none sm:w-auto sm:flex-1">
+              <Nav items={NAV_ITEMS} />
+            </div>
           )}
           {user && (
-            <div className="flex items-center gap-3 text-sm">
-              <span className="hidden text-slate-600 sm:inline dark:text-slate-300">
-                {user.email}
-              </span>
-              <button
-                type="button"
-                onClick={() => void logout()}
-                className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-              >
+            <div className="flex items-center gap-3">
+              <span className="hidden text-small text-ink-3 sm:inline">{user.email}</span>
+              <Button variant="secondary" onClick={() => void logout()}>
                 Wyloguj
-              </button>
+              </Button>
             </div>
           )}
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      <main className="mx-auto max-w-page px-4 py-8 sm:px-6 sm:py-12">
         <Outlet />
       </main>
     </div>

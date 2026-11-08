@@ -4,6 +4,12 @@ import { Link } from 'react-router-dom'
 import { describeError } from '../../api/messages'
 import { listRecipes, RECIPES_PAGE_SIZE } from '../../api/recipes'
 import { ErrorMessage } from '../../components/Field'
+import { Button } from '../../components/ui/Button'
+import { CARD_LINK } from '../../components/ui/cardClass'
+import { buttonClass } from '../../components/ui/buttonClass'
+import { EmptyState } from '../../components/ui/EmptyState'
+import { Input } from '../../components/ui/Input'
+import { Spinner } from '../../components/ui/Spinner'
 
 export function RecipeListPage() {
   const [input, setInput] = useState('')
@@ -26,81 +32,83 @@ export function RecipeListPage() {
   const pages = data ? Math.max(1, Math.ceil(data.total / RECIPES_PAGE_SIZE)) : 1
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Przepisy</h1>
-        <Link
-          to="/recipes/import"
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-        >
+    <section className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-h1">Przepisy</h1>
+        <Link to="/recipes/import" className={buttonClass('primary')}>
           Importuj z linku
         </Link>
       </div>
 
       <form onSubmit={search} role="search" className="flex gap-2">
-        <input
+        <Input
           type="search"
           aria-label="Szukaj przepisu"
           placeholder="Szukaj po tytule"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
         />
-        <button
-          type="submit"
-          className="rounded-md border border-slate-300 px-4 py-2 hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-        >
+        <Button type="submit" variant="secondary">
           Szukaj
-        </button>
+        </Button>
       </form>
 
-      {list.isPending && <p>Wczytywanie przepisów…</p>}
+      {list.isPending && (
+        <p className="flex items-center gap-2 text-ink-2">
+          <Spinner />
+          Wczytywanie przepisów…
+        </p>
+      )}
       {list.isError && <ErrorMessage message={describeError(list.error)} />}
       {data && data.items.length === 0 && (
-        <p className="text-slate-600 dark:text-slate-300">
-          {q
-            ? 'Brak przepisów pasujących do wyszukiwania.'
-            : 'Nie masz jeszcze żadnych przepisów. Zaimportuj pierwszy z linku.'}
-        </p>
+        <EmptyState
+          title={
+            q
+              ? 'Brak przepisów pasujących do wyszukiwania.'
+              : 'Nie masz jeszcze żadnych przepisów. Zaimportuj pierwszy z linku.'
+          }
+        />
       )}
       {data && data.items.length > 0 && (
         <>
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className="grid gap-4 sm:grid-cols-2">
             {data.items.map((recipe) => (
               <li
                 key={recipe.id}
-                className="rounded-md border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
+                className={`${CARD_LINK} relative h-full space-y-2 focus-within:border-line-strong`}
               >
-                <Link to={`/recipes/${recipe.id}`} className="font-medium hover:underline">
+                {/* The title link is stretched over the whole card; the meta line stays outside the link name. */}
+                <Link
+                  to={`/recipes/${recipe.id}`}
+                  className="block rounded-sm font-display text-h3 font-semibold text-ink after:absolute after:inset-0 after:rounded-md"
+                >
                   {recipe.title}
                 </Link>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                <p className="text-small text-ink-3">
                   Porcje: {recipe.servings}
                   {recipe.tags.length > 0 && ` · ${recipe.tags.join(', ')}`}
                 </p>
               </li>
             ))}
           </ul>
-          <nav aria-label="Paginacja" className="flex items-center justify-between text-sm">
-            <button
-              type="button"
+          <nav aria-label="Paginacja" className="flex items-center justify-between gap-4 text-small text-ink-2">
+            <Button
+              variant="secondary"
               disabled={offset === 0}
               onClick={() => setOffset(Math.max(0, offset - RECIPES_PAGE_SIZE))}
-              className="rounded-md border border-slate-300 px-3 py-1.5 disabled:opacity-50 dark:border-slate-600"
             >
               Poprzednia
-            </button>
-            <span>
+            </Button>
+            <span className="text-center tabular-nums">
               Strona {page} z {pages} ({data.total} przepisów)
             </span>
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               disabled={offset + RECIPES_PAGE_SIZE >= data.total}
               onClick={() => setOffset(offset + RECIPES_PAGE_SIZE)}
-              className="rounded-md border border-slate-300 px-3 py-1.5 disabled:opacity-50 dark:border-slate-600"
             >
               Następna
-            </button>
+            </Button>
           </nav>
         </>
       )}

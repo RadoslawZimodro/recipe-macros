@@ -6,7 +6,7 @@ export function RequireAuth() {
   const { user } = useAuth()
   const location = useLocation()
 
-  if (user === undefined) return <p className="text-slate-500">Ładowanie…</p>
+  if (user === undefined) return <p className="text-ink-3">Ładowanie…</p>
   if (user === null) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   return <Outlet />
 }
@@ -15,7 +15,7 @@ export function RequireAuth() {
 export function RedirectIfAuthenticated() {
   const { user } = useAuth()
 
-  if (user === undefined) return <p className="text-slate-500">Ładowanie…</p>
+  if (user === undefined) return <p className="text-ink-3">Ładowanie…</p>
   if (user) return <Navigate to="/" replace />
   return <Outlet />
 }
