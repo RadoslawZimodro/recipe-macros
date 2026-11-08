@@ -49,7 +49,7 @@ function RecipePicker({ day }: { day: string }) {
       </p>
     )
   }
-  if (recipes.isError) return <ErrorMessage message={describeError(recipes.error)} />
+  if (recipes.isError) return <ErrorMessage inline message={describeError(recipes.error)} />
   if (recipes.data.items.length === 0) {
     return <p className="text-ink-2">Nie masz jeszcze żadnych przepisów.</p>
   }
@@ -89,7 +89,7 @@ function RecipePicker({ day }: { day: string }) {
         value={servings}
         onChange={(e) => setServings(e.target.value)}
       />
-      <ErrorMessage message={add.isError ? describeError(add.error) : null} />
+      <ErrorMessage inline message={add.isError ? describeError(add.error) : null} />
       <SubmitButton disabled={!valid} loading={add.isPending} />
     </form>
   )
@@ -133,7 +133,7 @@ function ProductPicker({ day }: { day: string }) {
         value={grams}
         onChange={(e) => setGrams(e.target.value)}
       />
-      <ErrorMessage message={add.isError ? describeError(add.error) : null} />
+      <ErrorMessage inline message={add.isError ? describeError(add.error) : null} />
       <SubmitButton disabled={!valid} loading={add.isPending} />
     </form>
   )

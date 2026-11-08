@@ -62,8 +62,8 @@ export function TrendChart({ today }: { today: string }) {
           <Skeleton className="h-64" />
         </div>
       )}
-      {days.isError && <ErrorMessage message={describeError(days.error)} />}
-      {days.isSuccess && !hasAny && <EmptyState title="Brak wpisów w tym okresie." />}
+      {days.isError && <ErrorMessage inline message={describeError(days.error)} />}
+      {days.isSuccess && !hasAny && <EmptyState inline title="Brak wpisów w tym okresie." />}
       {days.isSuccess && hasAny && (
         <>
           {/* The chart is visual only; screen readers get the same numbers as a list. */}

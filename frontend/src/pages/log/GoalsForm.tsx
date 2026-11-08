@@ -67,7 +67,7 @@ function GoalsFields({ kcalGoal, proteinGoal }: { kcalGoal: number | null; prote
             onChange={(e) => setProtein(e.target.value)}
           />
         </div>
-        <ErrorMessage message={save.isError ? describeError(save.error) : null} />
+        <ErrorMessage inline message={save.isError ? describeError(save.error) : null} />
         {save.isSuccess && (
           <p role="status" className="text-small text-accent">
             Zapisano cele.
