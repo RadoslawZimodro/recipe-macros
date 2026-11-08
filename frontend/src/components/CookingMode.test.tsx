@@ -92,6 +92,7 @@ describe('CookingMode', () => {
       render(<Harness steps={steps} />)
       await user.click(screen.getByRole('button', { name: 'Tryb gotowania' }))
       expect(screen.queryByRole('img')).not.toBeInTheDocument()
+      expect(screen.getByTestId('step-photo-slot')).toBeEmptyDOMElement()
       expect(screen.getByText('Pierwszy.')).toBeInTheDocument()
     },
   )
@@ -186,5 +187,44 @@ describe('CookingMode', () => {
     expect(screen.getByRole('img')).toHaveAttribute('src', expect.stringMatching(/steps\/3\/image$/))
     await user.click(screen.getByRole('button', { name: 'Krok 2' }))
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('keeps a fixed-height dialog and a photo slot on every step, with or without a photo', async () => {
+    const user = await openDialog()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveClass('h-dvh', 'sm:h-[min(90dvh,44rem)]')
+    const slot = screen.getByTestId('step-photo-slot')
+    expect(slot).toBeInTheDocument() // step 1 has no photo
+    await user.click(screen.getByRole('button', { name: 'Dalej' }))
+    expect(screen.getByTestId('step-photo-slot')).toContainElement(screen.getByRole('img'))
+    fireEvent.error(screen.getByRole('img'))
+    expect(screen.getByTestId('step-photo-slot')).toBeInTheDocument()
+    expect(dialog).toHaveClass('h-dvh', 'sm:h-[min(90dvh,44rem)]')
+  })
+
+  it('scrolls the step text back to the top when the step changes', async () => {
+    const user = await openDialog()
+    const text = screen.getByText('Pokrój cebulę.').parentElement!
+    expect(text).toHaveClass('overflow-y-auto')
+    text.scrollTop = 80
+    await user.click(screen.getByRole('button', { name: 'Dalej' }))
+    expect(text.scrollTop).toBe(0)
+  })
+
+  it('scrolls the active step button into view and keeps navigation in the footer', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      const user = await openDialog()
+      await user.click(screen.getByRole('button', { name: 'Dalej' }))
+      const active = screen.getByRole('button', { name: 'Krok 2' })
+      expect(scrollIntoView.mock.contexts).toContain(active)
+      const footer = screen.getByRole('contentinfo')
+      expect(footer).toContainElement(screen.getByRole('button', { name: 'Dalej' }))
+      expect(footer).toContainElement(screen.getByRole('navigation', { name: 'Kroki' }))
+    } finally {
+      // @ts-expect-error restore jsdom's lack of scrollIntoView
+      delete Element.prototype.scrollIntoView
+    }
   })
 })
