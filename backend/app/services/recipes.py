@@ -231,6 +231,15 @@ def list_recipes(
     )
 
 
+def get_cover(session: Session, recipe_id: int) -> tuple[Path, str]:
+    """The file and content type of the recipe's photo; 404 if there is none (or not yours)."""
+    row = session.execute(load_sql("get_cover.sql"), {"recipe_id": recipe_id}).first()
+    path = image_file(row.cover_path) if row else None
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
+    return path, row.cover_content_type
+
+
 def get_step_image(session: Session, recipe_id: int, position: int) -> tuple[Path, str]:
     """The file and content type of a step's picture; 404 if there is none (or not yours)."""
     row = session.execute(

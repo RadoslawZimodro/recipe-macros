@@ -120,6 +120,8 @@ class RecipeSummary(BaseModel):
     title: str
     description: str | None
     image_url: str | None
+    # Relative address of the saved copy of the photo (served by our API), or null. Output only.
+    cover_url: str | None
     servings: int
     tags: list[str]
     prep_time_min: int | None

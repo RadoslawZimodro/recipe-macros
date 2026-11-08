@@ -627,3 +627,228 @@ def test_identical_distant_page_steps_stay_unmatched_when_the_ai_changes_the_cou
     ai = [mix, "Odstaw ciasto na godzinę do lodówki.", "Piecz do zrumienienia.", mix]
 
     assert match_step_images(page, pics, ai) == ()
+
+
+# --- cover photo ---
+COVER = "https://blog.example.test/cover.jpg"
+
+
+def cover_page(*, image=COVER):
+    node = recipe(
+        recipeIngredient=["1 jajko"],
+        recipeInstructions=[{"@type": "HowToStep", "text": "Pokrój."}],
+        image=image,
+    )
+    return page(node).encode()
+
+
+def test_import_saves_the_cover_and_exposes_it(alice, web):
+    fetcher = web({URL: cover_page()}, {COVER: JPEG})
+
+    body = do_import(alice).json()
+    rid = body["recipe"]["id"]
+
+    assert body["recipe"]["cover_url"] == f"/recipes/{rid}/cover"
+    assert body["recipe"]["image_url"] == COVER  # the source address stays
+    assert fetcher.image_calls == [COVER]
+    assert "photo" not in (body["notice"] or "")
+    served = alice.get(f"/recipes/{rid}/cover")
+    assert served.status_code == 200 and served.content == JPEG
+    assert served.headers["content-type"] == "image/jpeg"
+    assert served.headers["x-content-type-options"] == "nosniff"
+    assert served.headers["cache-control"] == "private, max-age=86400"
+    assert served.headers["content-security-policy"] == "default-src 'none'; sandbox"
+    assert alice.get("/recipes").json()["items"][0]["cover_url"] == f"/recipes/{rid}/cover"
+
+
+@pytest.mark.parametrize("data", [SVG, b"<html>nope</html>"])
+def test_a_cover_that_is_not_an_image_is_rejected(alice, web, data):
+    web({URL: cover_page()}, {COVER: data})
+
+    body = do_import(alice).json()
+
+    assert body["recipe"]["cover_url"] is None
+    assert "photo of the dish" in body["notice"]
+    assert media_files() == set()
+
+
+def test_a_too_large_cover_is_rejected(alice, web, monkeypatch):
+    monkeypatch.setattr(get_settings(), "image_max_bytes", 100)
+    fetcher = web({URL: cover_page()}, {})
+    real = image_fetcher(lambda r: httpx2.Response(200, content=JPEG + b"x" * 500))
+    fetcher.fetch_image = lambda url, *, timeout=None: real.fetch_image(
+        "https://cdn.example.com/a.jpg", timeout=timeout
+    )
+
+    body = do_import(alice).json()
+
+    assert body["recipe"]["cover_url"] is None and "photo of the dish" in body["notice"]
+    assert media_files() == set()
+
+
+def test_a_failing_cover_does_not_break_the_import(alice, web):
+    web({URL: cover_page()}, {COVER: FetchError("timeout", "slow")})
+
+    response = do_import(alice)
+
+    assert response.status_code == 201
+    assert response.json()["recipe"]["cover_url"] is None
+    assert "photo of the dish" in response.json()["notice"]
+
+
+def test_cover_and_steps_share_one_time_budget(alice, web, monkeypatch):
+    import time
+
+    monkeypatch.setattr(get_settings(), "image_total_budget_sec", 0.25)
+    page_bytes = steps_page(("Jeden.", IMG + "a.jpg"))
+    fetcher = web({URL: page_bytes}, {COVER: JPEG, IMG + "a.jpg": JPEG})
+    fetcher.pages[URL] = page(
+        recipe(
+            recipeIngredient=["1 jajko"],
+            image=COVER,
+            recipeInstructions=[{"@type": "HowToStep", "text": "Jeden.", "image": IMG + "a.jpg"}],
+        )
+    ).encode()
+    original = fetcher.fetch_image
+
+    def slow(url, *, timeout=None):
+        time.sleep(0.3)
+        return original(url)
+
+    fetcher.fetch_image = slow
+
+    body = do_import(alice).json()
+
+    assert body["recipe"]["cover_url"] is not None  # the cover goes first
+    assert fetcher.image_calls == [COVER]  # the step picture never started
+    assert "1 step picture" in body["notice"]
+
+
+def test_refresh_replaces_the_cover_and_deletes_the_old_file(alice, web):
+    fetcher = web({URL: cover_page()}, {COVER: JPEG})
+    rid = do_import(alice).json()["recipe"]["id"]
+    old = media_files()
+    new_url = "https://blog.example.test/new.png"
+    fetcher.pages[URL] = cover_page(image=new_url)
+    fetcher.images[new_url] = PNG
+
+    body = do_import(alice, refresh=True).json()
+
+    assert body["recipe"]["id"] == rid and body["recipe"]["cover_url"] == f"/recipes/{rid}/cover"
+    assert alice.get(f"/recipes/{rid}/cover").content == PNG
+    new = media_files()
+    assert len(new) == 1 and not (new & old)
+
+
+def test_refresh_keeps_the_old_cover_when_the_download_fails(alice, web):
+    fetcher = web({URL: cover_page()}, {COVER: JPEG})
+    rid = do_import(alice).json()["recipe"]["id"]
+    old = media_files()
+    fetcher.images[COVER] = FetchError("timeout", "slow")
+
+    body = do_import(alice, refresh=True).json()
+
+    assert body["recipe"]["cover_url"] == f"/recipes/{rid}/cover"
+    assert alice.get(f"/recipes/{rid}/cover").content == JPEG
+    assert media_files() == old
+    assert "photo of the dish" in body["notice"]
+
+
+def test_refresh_drops_the_cover_when_the_photo_changed_and_cannot_be_fetched(alice, web):
+    fetcher = web({URL: cover_page()}, {COVER: JPEG})
+    do_import(alice)
+    fetcher.pages[URL] = cover_page(image="https://blog.example.test/other.jpg")  # not served
+
+    body = do_import(alice, refresh=True).json()
+
+    assert body["recipe"]["cover_url"] is None
+    assert media_files() == set()
+
+
+def test_put_keeps_the_cover(alice, web):
+    web({URL: cover_page()}, {COVER: JPEG})
+    rid = do_import(alice).json()["recipe"]["id"]
+    payload = {"title": "Zmieniony", "steps": [{"instruction": "Nowy."}], "ingredients": []}
+
+    updated = alice.put(f"/recipes/{rid}", json=payload).json()
+
+    assert updated["cover_url"] == f"/recipes/{rid}/cover"
+    assert len(media_files()) == 1
+
+
+def test_clients_cannot_set_the_cover(alice):
+    for extra in ({"cover_path": "0" * 32 + ".jpg"}, {"cover_url": "/x"}):
+        assert alice.post("/recipes", json={**recipe_payload(), **extra}).status_code == 422
+
+
+def test_cover_endpoint_isolation_login_and_missing(alice, bob, client, web):
+    web({URL: cover_page()}, {COVER: JPEG})
+    rid = do_import(alice).json()["recipe"]["id"]
+    path = f"/recipes/{rid}/cover"
+
+    assert alice.get(path).status_code == 200
+    assert bob.get(path).status_code == 404
+    assert client.get(path).status_code == 401
+    assert alice.get(f"/recipes/{create(alice)['id']}/cover").status_code == 404  # no cover
+    assert alice.delete(f"/recipes/{rid}").status_code == 204
+    assert alice.get(path).status_code == 404  # soft-deleted
+    assert len(media_files()) == 1  # the file stays
+
+
+@pytest.mark.parametrize("path", ["/recipes/0/cover", "/recipes/2147483648/cover"])
+def test_cover_ids_out_of_range_are_422(alice, path):
+    assert alice.get(path).status_code == 422
+
+
+def test_list_returns_covers_in_one_query(alice, web):
+    from sqlalchemy import event
+
+    from app.db import engine
+
+    web({URL: cover_page()}, {COVER: JPEG})
+    do_import(alice)
+    for _ in range(3):
+        create(alice)
+    selects = []
+
+    def count(conn, cursor, statement, *args):
+        if "FROM recipes" in statement:
+            selects.append(statement)
+
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        items = alice.get("/recipes").json()["items"]
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+
+    assert len(items) == 4 and sum(i["cover_url"] is not None for i in items) == 1
+    assert len(selects) == 2  # the page and the total, regardless of the number of covers
+
+
+def test_no_orphan_cover_when_saving_fails(alice, web, monkeypatch):
+    web({URL: cover_page()}, {COVER: JPEG})
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr("app.services.recipe_import.build_children", boom)
+    with pytest.raises(RuntimeError):
+        do_import(alice)
+
+    assert media_files() == set()
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "cover_path = '../../etc/passwd', cover_content_type = 'image/png'",
+        "cover_path = repeat('a', 32) || '.jpg', cover_content_type = 'image/svg+xml'",
+        "cover_path = repeat('a', 32) || '.jpg'",
+    ],
+)
+def test_database_refuses_a_bad_cover(alice, admin_db, assignment):
+    rid = create(alice)["id"]
+
+    with pytest.raises(IntegrityError):
+        admin_db.execute(text(f"UPDATE recipes SET {assignment} WHERE id = :r"), {"r": rid})
+    admin_db.rollback()

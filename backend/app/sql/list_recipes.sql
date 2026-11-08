@@ -8,6 +8,7 @@ SELECT
     r.title,
     r.description,
     r.image_url,
+    CASE WHEN r.cover_path IS NOT NULL THEN '/recipes/' || r.id || '/cover' END AS cover_url,
     r.servings,
     r.tags,
     r.prep_time_min,

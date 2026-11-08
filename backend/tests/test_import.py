@@ -40,6 +40,9 @@ class FakeFetcher:
             raise FetchError("not_found", "The page was not found (it may have been removed).")
         return FetchedPage(url, url, 200, "text/html", page)
 
+    def fetch_image(self, url, *, timeout=None):
+        return FetchedPage(url, url, 200, "image/jpeg", b"\xff\xd8\xff\xe0fake-jpeg")
+
 
 @pytest.fixture
 def fake():
