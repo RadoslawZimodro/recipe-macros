@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { NotFound } from './components/NotFound'
 import { RedirectIfAuthenticated, RequireAuth } from './components/RequireAuth'
 import { LoginPage, RegisterPage } from './pages/AuthPages'
 import { HomePage } from './pages/HomePage'
@@ -25,7 +26,7 @@ function App() {
           <Route path="/log" element={<LogPage />} />
           <Route path="/pantry" element={<PantryPage />} />
         </Route>
-        <Route path="*" element={<p>Nie znaleziono strony.</p>} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   )
