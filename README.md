@@ -55,6 +55,18 @@ docker compose exec frontend sh -c "npx tsc -b && npm run lint"      # types + l
 
 CI (`.github/workflows/ci.yml`) runs the same commands through `docker compose`: ruff, pytest, `tsc -b`, oxlint, Vitest and the production build.
 
+### Media volume
+
+Recipe step images live in the named volume `media` (mounted at `/app/media`, `MEDIA_DIR`), separate per
+compose project. It survives `docker compose down`; `docker compose down -v` deletes it together with the database.
+Back it up with:
+
+```bash
+docker run --rm -v <project>_media:/media -v "$PWD":/backup alpine tar czf /backup/media.tgz -C /media .
+```
+
+(`<project>` is `COMPOSE_PROJECT_NAME`, by default the directory name; see `docker volume ls`.)
+
 ### Pre-commit (on the host)
 
 ```bash
