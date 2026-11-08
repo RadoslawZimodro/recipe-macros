@@ -57,15 +57,18 @@ CI (`.github/workflows/ci.yml`) runs the same commands through `docker compose`:
 
 ### Media volume
 
-Recipe step images live in the named volume `media` (mounted at `/app/media`, `MEDIA_DIR`), separate per
-compose project. It survives `docker compose down`; `docker compose down -v` deletes it together with the database.
-Back it up with:
+Recipe step images live in the named volume `media`, mounted at `/app/media` (the path is fixed in
+`docker-compose.yml`, not configurable via `.env`). The volume is separate per compose project, survives
+`docker compose down`, and is deleted by `docker compose down -v` together with the database.
+
+Back up and restore (run from a directory outside the repo; `<project>` is `COMPOSE_PROJECT_NAME`, see `docker volume ls`):
 
 ```bash
-docker run --rm -v <project>_media:/media -v "$PWD":/backup alpine tar czf /backup/media.tgz -C /media .
+docker run --rm -v <project>_media:/media:ro -v "$PWD":/backup alpine:3.20 tar czf /backup/media.tgz -C /media .
+docker run --rm -v <project>_media:/media -v "$PWD":/backup alpine:3.20 tar xzf /backup/media.tgz -C /media
 ```
 
-(`<project>` is `COMPOSE_PROJECT_NAME`, by default the directory name; see `docker volume ls`.)
+In Git Bash on Windows prefix both commands with `MSYS_NO_PATHCONV=1`.
 
 ### Pre-commit (on the host)
 
