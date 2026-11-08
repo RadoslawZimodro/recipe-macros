@@ -6,7 +6,7 @@ Import a recipe from a link, get an **estimate** of its macros (kcal, protein, f
 and per serving), log what you ate during the day and find recipes that match what is in your
 fridge.
 
-> Status: Step 9 in progress (frontend: login and app shell done). See the plan in [AGENTS.md](AGENTS.md).
+> Status: Steps 0-10 done (backend, frontend, step photos and cooking mode); Step 11 (social media import) is next. See the plan in [AGENTS.md](AGENTS.md).
 
 ## Stack
 

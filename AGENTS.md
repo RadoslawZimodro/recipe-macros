@@ -169,7 +169,7 @@ commit + push, zaznaczenie `[x]` poniżej.
   Kryterium: import działa na stronie bez JSON-LD, testy parsera na typowych zapisach
   ("2 łyżki oliwy", "1 średnia cebula", "szczypta soli", "200 g mąki") z zamockowanym LLM,
   błędy są czytelne.
-- **Krok 5: scalony z Krokiem 4** (numeracja zachowana, żeby nie przenumerowywać Kroków 6-10).
+- **Krok 5: scalony z Krokiem 4** (numeracja zachowana, żeby nie przenumerowywać Kroków 6-12).
 - [x] **Krok 6: Przeliczanie na gramy i makro**
   Tabela `unit_conversions`, przeliczanie jednostek domowych na gramy, dane odżywcze
   (USDA FoodData Central, wcześniej planowany Open Food Facts, i/lub ręczne), makro przepisu i na porcję, oznaczanie źródła wartości,
@@ -182,15 +182,26 @@ commit + push, zaznaczenie `[x]` poniżej.
   `pantry_items`, `staple_ingredients`, zapytanie o dopasowanie (% składników, braki,
   sortowanie), opcjonalnie zamienniki.
   Kryterium: testy dopasowania, `EXPLAIN` zapytania opisany w README.
-- [ ] **Krok 9: Frontend**
+- [x] **Krok 9: Frontend**
   Widoki: logowanie, lista przepisów, import z linku, szczegóły przepisu z makro,
   dziennik dnia z wykresem, lodówka z wynikami.
   Kryterium: całość przechodzi w UI.
-- [ ] **Krok 10: Dopracowanie pod portfolio**
+- [x] **Krok 10: Zdjęcia kroków i tryb gotowania**
+  Import pobiera zdjęcia kroków (`HowToStep.image`, Microdata i JSON-LD) i trzyma lokalną
+  kopię na wolumenie `media`; zdjęcia przeżywają krok AI dzięki dopasowaniu po tekście.
+  Modal trybu gotowania ze zdjęciem kroku i zwijanym panelem składników.
+  Kryterium: zdjęcia widoczne w trybie gotowania po imporcie.
+- [ ] **Krok 11: Przepisy z social media (YouTube, TikTok, Instagram)**
+  Etap A: yt-dlp pobiera tylko metadane (opis, napisy) i przepuszcza je przez istniejącą
+  ścieżkę AI. Etap B (osobna zgoda autora po teście A): transkrypcja audio lokalnym modelem
+  mowy. Bez cookies i bez pobierania wideo na start; tylko prywatny, lokalny użytek.
+  Kryterium: link z YouTube z przepisem w opisie lub napisach daje zapisany przepis, a post
+  bez przepisu czytelny błąd.
+- [ ] **Krok 12: Dopracowanie pod portfolio**
   README z diagramem schematu i przykładami SQL, screenshoty, GitHub Actions
   (lint + testy), seed z danymi demo, opis ograniczeń i decyzji projektowych.
 - [ ] **Później (poza zakresem)**: zdjęcie lodówki (model wizyjny, wynik jako sugestia do
-  zatwierdzenia), import z social media, planer posiłków na tydzień, lista zakupów.
+  zatwierdzenia), planer posiłków na tydzień, lista zakupów.
 
 ## 9. Jak raportować postęp
 
