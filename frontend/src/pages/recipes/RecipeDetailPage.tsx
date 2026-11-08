@@ -49,7 +49,7 @@ const nf = new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 1 })
 function MacroBox({ title, macros }: { title: string; macros: Macros }) {
   return (
     <Card className="space-y-4">
-      <h3 className="text-small font-medium text-ink-2">{title}</h3>
+      <h3 className="font-sans text-small font-medium text-ink-2">{title}</h3>
       <MacroFigure label="Kalorie" value={macros.kcal} unit="kcal" size="lg" />
       <div className="grid grid-cols-3 gap-4">
         <MacroFigure label="Białko" value={macros.protein} unit="g" />
@@ -181,7 +181,7 @@ function IngredientRow({
 
   return (
     <li className="space-y-2 py-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <span>
           {line.raw_text}
           {line.is_optional && ' (opcjonalnie)'}
@@ -223,7 +223,7 @@ function IngredientRow({
           )}
         </form>
       ) : (
-        <Button variant="ghost" onClick={() => setEditing(true)} aria-label={`Popraw wagę: ${line.raw_text}`}>
+        <Button variant="link" onClick={() => setEditing(true)} aria-label={`Popraw wagę: ${line.raw_text}`}>
           Popraw wagę
         </Button>
       )}
