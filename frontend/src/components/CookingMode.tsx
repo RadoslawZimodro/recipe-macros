@@ -19,6 +19,11 @@ interface CookingModeProps {
 // so the browser sends the session cookie with the <img> request.
 const imageSrc = (url: string) => `${API_URL}${url}`
 
+// Only our own relative image path is rendered: anything else (another host via concatenation,
+// "//host", javascript:, or a missing field before the API sends it) shows the step without a photo.
+const IMAGE_PATH = /^\/recipes\/\d+\/steps\/\d+\/image$/
+const safeImage = (url: string | null | undefined) => (url && IMAGE_PATH.test(url) ? url : null)
+
 /**
  * Step-by-step view in a native modal <dialog>: the browser provides the focus trap and the
  * inert background. Escape, scroll lock and focus return are done here so they behave the same
@@ -90,12 +95,12 @@ function CookingBody({
   const [failed, setFailed] = useState<Set<string>>(new Set())
   const last = steps.length - 1
   const step = steps[index]
-  const imageUrl = step.image_url
+  const imageUrl = safeImage(step.image_url)
   const showImage = imageUrl !== null && !failed.has(imageUrl)
 
   // Warm the cache so the next photo is there when "Dalej" is pressed.
   useEffect(() => {
-    const next = steps[index + 1]?.image_url
+    const next = safeImage(steps[index + 1]?.image_url)
     if (next) new Image().src = imageSrc(next)
   }, [index, steps])
 

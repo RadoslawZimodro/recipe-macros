@@ -78,6 +78,21 @@ describe('CookingMode', () => {
     expect(screen.getByText('Podsmaż cebulę.')).toBeInTheDocument()
   })
 
+  it.each([undefined, '@evil.example/x', '//evil', 'http://evil.example/recipes/1/steps/1/image', 'javascript:alert(1)'])(
+    'renders no photo for image_url %s',
+    async (bad) => {
+      const user = userEvent.setup()
+      const steps = [
+        { position: 1, instruction: 'Pierwszy.', image_url: bad as unknown as string },
+        { position: 2, instruction: 'Drugi.', image_url: bad as unknown as string },
+      ]
+      render(<Harness steps={steps} />)
+      await user.click(screen.getByRole('button', { name: 'Tryb gotowania' }))
+      expect(screen.queryByRole('img')).not.toBeInTheDocument()
+      expect(screen.getByText('Pierwszy.')).toBeInTheDocument()
+    },
+  )
+
   it('has a collapsed ingredients panel that can be opened', async () => {
     const user = await openDialog()
     const summary = screen.getByText('Składniki')
