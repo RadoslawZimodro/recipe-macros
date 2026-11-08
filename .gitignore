@@ -26,3 +26,7 @@ Thumbs.db
 
 # Local agent settings
 .claude/
+
+# Media (uploaded images)
+backend/media/
+media.tgz
