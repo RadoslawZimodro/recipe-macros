@@ -140,9 +140,9 @@ def _collect_steps(value: Any, out: list[tuple[str, Any]], depth: int = 0) -> No
             _collect_steps(value.get("itemListElement"), out, depth + 1)
         else:  # HowToStep: prefer its text, fall back to its name
             lines = _clean_lines(value.get("text") or value.get("name"))
-            # A picture belongs to the step as a whole: with several lines it is ambiguous.
-            image = value.get("image") if len(lines) == 1 else None
-            out.extend((line, image) for line in lines)
+            # The picture illustrates the whole step; its first line is the start of that step.
+            image = value.get("image")
+            out.extend((line, image if i == 0 else None) for i, line in enumerate(lines))
 
 
 def _steps(value: Any, base_url: str) -> tuple[list[StepIn], list[str | None]]:

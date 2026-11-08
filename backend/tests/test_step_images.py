@@ -19,7 +19,7 @@ from app.services.redis_client import get_redis
 from app.services.safe_fetch import FetchedPage, FetchError
 from tests.fakes import FakeLLM, ing
 from tests.test_import import URL, FakeFetcher, do_import
-from tests.test_recipe_extractor import extract, page, recipe
+from tests.test_recipe_extractor import extract, fixture, page, recipe
 from tests.test_recipes import create, recipe_payload
 
 JPEG = b"\xff\xd8\xff\xe0" + b"jpeg-bytes" * 4
@@ -489,3 +489,48 @@ def test_a_failed_write_leaves_no_files(monkeypatch, failing):
         media.save_image(JPEG)
 
     assert media_files() == set()
+
+
+# --- steps with several text lines: the picture goes to the first line only ---
+def test_microdata_multiline_steps_put_the_picture_on_the_first_line():
+    result = fixture("microdata_multiline_steps.html", base="https://blog.example.test/przepis/")
+
+    assert [s.instruction for s in result.recipe.steps] == [
+        "Wymieszaj mąkę.",
+        "Dodaj drożdże.",
+        "Wyrabiaj 10 minut.",
+        "Odstaw do wyrośnięcia.",
+        "Nakryj ściereczką.",
+        "Piecz 20 minut.",
+        "Podaj.",
+    ]
+    base = "https://blog.example.test/img/"
+    assert result.step_images == (
+        base + "s1-1080.jpg",
+        None,
+        None,
+        base + "s2-1080.jpg",
+        None,
+        None,
+        base + "s4-1080.jpg",
+    )
+    assert len(result.step_images) == len(result.recipe.steps)
+
+
+def test_jsonld_multiline_howtostep_puts_the_picture_on_the_first_line():
+    html = steps_page(
+        ("Pokrój cebulę.\nSmaż ją.", IMG + "a.jpg"),
+        ("Dodaj sól.", IMG + "b.jpg"),
+        ("Podaj.\nSmacznego.", None),
+    )
+
+    result = extract(html)
+
+    assert [s.instruction for s in result.recipe.steps] == [
+        "Pokrój cebulę.",
+        "Smaż ją.",
+        "Dodaj sól.",
+        "Podaj.",
+        "Smacznego.",
+    ]
+    assert result.step_images == (IMG + "a.jpg", None, IMG + "b.jpg", None, None)

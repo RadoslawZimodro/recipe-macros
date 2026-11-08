@@ -421,6 +421,9 @@ with the stored `Content-Type`, `X-Content-Type-Options: nosniff` and
 never send `image_url` (the step body of `POST`/`PUT` has only `instruction`), so no URL or path can
 be injected.
 
+- **Several lines per step.** Some sites (e.g. aniagotuje.pl) put a step's text in several paragraphs
+  under one picture. Each line becomes a step of its own, and the picture goes to the **first** line
+  of its source step (the start of the step); the other lines get none.
 - **Download.** Through the same SSRF-safe fetcher as pages (pinned IP, redirects re-validated), but
   with its own limits: 5 MB per file (after decompression), 30 pictures per recipe, the usual
   connect/read timeouts, and a hard 60 s ceiling for the whole picture phase: each download gets only
