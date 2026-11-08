@@ -15,10 +15,7 @@ export function HomePage() {
     <section className="space-y-8">
       <div className="max-w-reading space-y-2">
         <h1 className="text-h1">Witaj!</h1>
-        <p className="text-ink-2">
-          Jesteś zalogowany jako {user?.email}. Kolejne widoki (przepisy, dziennik, lodówka) pojawią
-          się w następnych krokach.
-        </p>
+        <p className="text-ink-2">Jesteś zalogowany jako {user?.email}.</p>
       </div>
       <nav aria-label="Skróty">
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
