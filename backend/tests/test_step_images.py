@@ -610,3 +610,20 @@ def test_aniagotuje_fixture_survives_an_ai_that_merges_the_tip():
         None,
         base + "s4-1080.jpg",
     )
+
+
+def test_a_short_generic_ai_step_does_not_pull_the_picture_of_a_long_step():
+    long_step = (
+        "Dodaj sól i pieprz, potem wlej bulion, wymieszaj i gotuj na małym ogniu pół godziny."
+    )
+
+    assert match_step_images([long_step], (IMG + "a.jpg",), ["Dodaj sól i pieprz."]) == ()
+
+
+def test_identical_distant_page_steps_stay_unmatched_when_the_ai_changes_the_count():
+    mix = "Wymieszaj dokładnie mąkę z masłem i cukrem w dużej misce."
+    page = [mix, "Odstaw ciasto na godzinę do lodówki.", mix]
+    pics = (IMG + "a.jpg", None, IMG + "c.jpg")
+    ai = [mix, "Odstaw ciasto na godzinę do lodówki.", "Piecz do zrumienienia.", mix]
+
+    assert match_step_images(page, pics, ai) == ()

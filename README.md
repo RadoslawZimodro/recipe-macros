@@ -445,7 +445,8 @@ be injected.
   follows the text, not the position: each page line with a picture is compared with the AI's steps
   by shared words (case, punctuation and numbering ignored; share of the *shorter* text's words
   found in the other). It moves only on a match of at least **0.7** (texts under 3 words must be
-  identical, unless the step count is unchanged and the position is the same). A tie between steps
+  identical, unless the step count is unchanged and the position is the same), and the longer text must be
+  at least 30% explained (a short generic AI step does not take a long page step's picture). A tie between steps
   that are not neighbours means no picture. A picture goes to one step only, a step gets one picture
   and order is kept (no crossing). If the AI merged lines, the first picture wins; if it split a
   line, its first part gets the picture. No picture is better than a picture on the wrong step.

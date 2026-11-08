@@ -19,7 +19,7 @@ from app.schemas.ai import AIFullRecipe, AIIngredient, AIRefinement
 from app.schemas.recipe import IngredientLineIn, RecipeIn, StepIn
 from app.services.ai_extract import MAX_STEPS, AIInvalidOutput
 from app.services.products import COUNT_UNITS, ProductCandidate, normalize_name
-from app.services.recipe_extractor import _STEP_NUMBER, ExtractedRecipe
+from app.services.recipe_extractor import STEP_NUMBER, ExtractedRecipe
 
 METHOD = "llm"  # stored as import_method: the content was produced with AI's help
 
@@ -27,6 +27,11 @@ METHOD = "llm"  # stored as import_method: the content was produced with AI's he
 # in the other (a merged or split step contains the other, a paraphrase keeps most words).
 # 0.7 is deliberately strict: a missing picture is better than one on the wrong step.
 MATCH_THRESHOLD = 0.7
+# ...and the LONGER text must be explained by at least this share of its words, so a short generic
+# AI step ("Dodaj sól i pieprz") cannot pull the picture of a long page step that merely contains
+# it. When the AI step is the longer one (merged lines) it is checked against the words of the
+# whole page, because only some of the merged lines are the one being compared.
+MIN_COVERAGE = 0.3
 TIE_MARGIN = 0.05  # candidates this close to the best are "equally good" (ambiguous)
 MIN_WORDS = 3  # shorter texts must match exactly: two shared words prove nothing (see same_count)
 
@@ -74,17 +79,23 @@ def _steps(steps: list[str]) -> list[StepIn]:
     return [StepIn(instruction=s.strip()[:5000]) for s in steps if s.strip()][:MAX_STEPS]
 
 
-def _words(text: str) -> Counter[str]:
-    return Counter(re.findall(r"\w+", _STEP_NUMBER.sub("", text).lower()))
+Words = tuple[Counter[str], int]  # word counts and their total (computed once per step)
 
 
-def _similarity(a: Counter[str], b: Counter[str], min_words: int = MIN_WORDS) -> float:
-    if a == b:
-        return 1.0 if a else 0.0
-    shortest = min(a.total(), b.total())
+def _words(text: str) -> Words:
+    counts = Counter(re.findall(r"\w+", STEP_NUMBER.sub("", text).lower()))
+    return counts, counts.total()
+
+
+def _similarity(page: Words, ai: Words, vocab: Counter[str], min_words: int = MIN_WORDS) -> float:
+    if page[0] == ai[0]:
+        return 1.0 if page[1] else 0.0
+    shortest = min(page[1], ai[1])
     if shortest < min_words:
         return 0.0
-    return (a & b).total() / shortest
+    common = (page[0] & ai[0]).total()
+    explained = common / page[1] if page[1] > ai[1] else (ai[0] & vocab).total() / ai[1]
+    return common / shortest if explained >= MIN_COVERAGE else 0.0
 
 
 def match_step_images(
@@ -99,6 +110,7 @@ def match_step_images(
     if not any(page_images):
         return ()
     ai_words = [_words(t) for t in ai_steps]
+    vocab = sum((_words(t)[0] for t in page_steps), Counter())
     result: list[str | None] = [None] * len(ai_steps)
     last = -1
     same_count = len(page_steps) == len(ai_steps)
@@ -108,7 +120,7 @@ def match_step_images(
         words = _words(text)
         # With an unchanged step count the same position backs up even a short text.
         scores = [
-            _similarity(words, w, 1 if same_count and i == position else MIN_WORDS)
+            _similarity(words, w, vocab, 1 if same_count and i == position else MIN_WORDS)
             for i, w in enumerate(ai_words)
         ]
         best = max(scores, default=0.0)
