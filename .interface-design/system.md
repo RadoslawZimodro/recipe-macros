@@ -25,7 +25,8 @@ All hue ~60-80 (warm), only lightness shifts between surfaces.
 | `--color-inset` | `#100f0c` | inputs (darker than surroundings) |
 | `--color-line` | `rgb(236 228 210 / 0.10)` | standard 1px border |
 | `--color-line-soft` | `rgb(236 228 210 / 0.06)` | dividers |
-| `--color-line-strong` | `rgb(236 228 210 / 0.20)` | emphasis, hovered controls |
+| `--color-line-strong` | `rgb(236 228 210 / 0.20)` | emphasis, hovered cards/rows |
+| `--color-control-border` | `rgb(236 228 210 / 0.38)` | borders of inputs, selects, secondary buttons only (WCAG 1.4.11, ~3:1) |
 | `--color-ink` | `#ece4d2` | primary text (flour) |
 | `--color-ink-2` | `#bdb5a3` | secondary text |
 | `--color-ink-3` | `#948c7b` | tertiary / metadata (AA on canvas, verify) |
@@ -60,7 +61,7 @@ components; only the tokens above. Every text/background pair must meet WCAG AA 
 ## Banned
 Gradients, box-shadows, glow, colored borders for decoration, more than one accent hue,
 emoji as icons, raw palette colors, hard-coded px/hex in components, `transition: all`,
-borders stronger than `--color-line-strong`, nested cards, centered-everything layouts.
+borders stronger than `--color-line-strong` outside form controls, nested cards, centered-everything layouts.
 
 ## Base components (one file each in `frontend/src/components/ui/`)
 Button (primary / secondary / ghost / danger; 40px h, 0 16px pad, radius-sm, 15/500),
@@ -71,3 +72,9 @@ Patterns get recorded here with measurements once they exist.
 Icons: simple inline SVG line icons, 1.5px stroke, no icon library. Max content width 1120px (reading width 680px).
 Mobile-first, breakpoints Tailwind defaults. Chart (Recharts) uses accent + ink-3 only, no legend colors beyond those.
 Untouched: logic, API calls, routes, texts of messages (Polish copy stays), tests (only selectors that break from markup changes).
+
+## Decisions after audit (author-approved)
+- Control borders use `--color-control-border`; structural hairlines stay at `--color-line`.
+- Home page gets link shortcuts to the main views (navigation only, no new logic or data).
+- Recipe deletion confirmation moves from inline "Na pewno?" to a native `<dialog>` Modal (tests updated deliberately).
+- Fonts `@fontsource-variable/fraunces` and `@fontsource-variable/inter` approved as dependencies.
