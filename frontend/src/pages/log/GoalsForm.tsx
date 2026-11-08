@@ -5,6 +5,8 @@ import { describeError } from '../../api/messages'
 import { ME_KEY } from '../../auth/meKey'
 import { useAuth } from '../../auth/AuthProvider'
 import { ErrorMessage, Field } from '../../components/Field'
+import { Button } from '../../components/ui/Button'
+import { Card } from '../../components/ui/Card'
 
 const toNumber = (text: string): number | null => (text.trim() === '' ? null : Number(text))
 
@@ -38,13 +40,10 @@ function GoalsFields({ kcalGoal, proteinGoal }: { kcalGoal: number | null; prote
     save.mutate()
   }
   return (
-    <section
-      aria-label="Cele dzienne"
-      className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
-    >
-      <h2 className="text-lg font-semibold">Cele dzienne</h2>
-      <form onSubmit={submit} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
+    <Card as="section" aria-label="Cele dzienne" className="space-y-6">
+      <h2 className="text-h3">Cele dzienne</h2>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field
             id="goal-kcal"
             label="Cel kalorii (kcal)"
@@ -70,18 +69,14 @@ function GoalsFields({ kcalGoal, proteinGoal }: { kcalGoal: number | null; prote
         </div>
         <ErrorMessage message={save.isError ? describeError(save.error) : null} />
         {save.isSuccess && (
-          <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">
+          <p role="status" className="text-small text-accent">
             Zapisano cele.
           </p>
         )}
-        <button
-          type="submit"
-          disabled={save.isPending}
-          className="rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-        >
+        <Button type="submit" loading={save.isPending}>
           Zapisz cele
-        </button>
+        </Button>
       </form>
-    </section>
+    </Card>
   )
 }

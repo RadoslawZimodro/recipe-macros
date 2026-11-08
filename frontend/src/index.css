@@ -4,8 +4,8 @@
    instead of following prefers-color-scheme. Remove together with the last `dark:` class. */
 @custom-variant dark (&:where(*));
 
-/* Design tokens, see .interface-design/system.md. One hue family (60-80), only lightness shifts. */
-@theme {
+/* Design tokens (static: charts read them as CSS variables), see .interface-design/system.md. One hue family (60-80), only lightness shifts. */
+@theme static {
   --color-canvas: #14130f;
   --color-surface: #1a1914;
   --color-raised: #211f19;

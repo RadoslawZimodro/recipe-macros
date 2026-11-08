@@ -14,90 +14,106 @@ import { addDays, foodLogKeys, getDays } from '../../api/foodLog'
 import { describeError } from '../../api/messages'
 import { useAuth } from '../../auth/AuthProvider'
 import { ErrorMessage } from '../../components/Field'
+import { Card } from '../../components/ui/Card'
+import { EmptyState } from '../../components/ui/EmptyState'
+import { SegmentedControl } from '../../components/ui/SegmentedControl'
+import { Skeleton, Spinner } from '../../components/ui/Spinner'
 
-type Range = 7 | 30
+type Range = '7' | '30'
+
+// Chart colours come from the design tokens (CSS variables), never from literals.
+const token = (name: string) => `var(--color-${name})`
 
 // `today` ends the range. The API returns empty days too, so the chart has no gaps.
 export function TrendChart({ today }: { today: string }) {
   const { user } = useAuth()
-  const [range, setRange] = useState<Range>(7)
-  const from = addDays(today, -(range - 1))
+  const [range, setRange] = useState<Range>('7')
+  const from = addDays(today, -(Number(range) - 1))
   const days = useQuery({
     queryKey: foodLogKeys.days(from, today),
     queryFn: () => getDays(from, today),
   })
   const goal = user?.daily_kcal_goal ?? null
 
-  const option = (value: Range) => (
-    <button
-      type="button"
-      aria-pressed={range === value}
-      onClick={() => setRange(value)}
-      className={`rounded-md px-3 py-1.5 text-sm ${range === value ? 'bg-emerald-600 text-white' : 'border border-slate-300 dark:border-slate-600'}`}
-    >
-      {value} dni
-    </button>
-  )
-
   const data =
     days.data?.days.map((d) => ({ day: d.day.slice(5), kcal: Math.round(d.total.kcal) })) ?? []
   const hasAny = days.data?.days.some((d) => d.entries > 0) ?? false
 
   return (
-    <section
-      aria-label="Wykres kalorii"
-      className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Kalorie w czasie</h2>
-        <div className="flex gap-2">
-          {option(7)}
-          {option(30)}
-        </div>
+    <Card as="section" aria-label="Wykres kalorii" className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-h3">Kalorie w czasie</h2>
+        <SegmentedControl
+          label="Zakres wykresu"
+          value={range}
+          onChange={setRange}
+          options={[
+            { value: '7', label: '7 dni' },
+            { value: '30', label: '30 dni' },
+          ]}
+        />
       </div>
-      {days.isPending && <p>Ładowanie wykresu…</p>}
-      {days.isError && <ErrorMessage message={describeError(days.error)} />}
-      {days.isSuccess && !hasAny && (
-        <p className="text-slate-600 dark:text-slate-300">Brak wpisów w tym okresie.</p>
-      )}
-      {days.isSuccess && hasAny && (
-        <div className="h-64 text-slate-600 dark:text-slate-300">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.25} />
-              <XAxis
-                dataKey="day"
-                stroke="currentColor"
-                tick={{ fill: 'currentColor', fontSize: 12 }}
-              />
-              <YAxis
-                stroke="currentColor"
-                tick={{ fill: 'currentColor', fontSize: 12 }}
-                unit=" kcal"
-                width={70}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: '#ffffff',
-                  color: '#0f172a',
-                  border: '1px solid #cbd5e1',
-                }}
-                formatter={(value) => [`${value} kcal`, 'Szacunek']}
-              />
-              <Bar dataKey="kcal" name="kcal" fill="#10b981" />
-              {goal !== null && (
-                <ReferenceLine
-                  y={goal}
-                  stroke="#ef4444"
-                  strokeDasharray="4 4"
-                  label={{ value: 'Cel', fill: 'currentColor', position: 'insideTopRight' }}
-                />
-              )}
-            </BarChart>
-          </ResponsiveContainer>
+      {days.isPending && (
+        <div className="space-y-4">
+          <p className="flex items-center gap-2 text-ink-2">
+            <Spinner />
+            Ładowanie wykresu…
+          </p>
+          <Skeleton className="h-64" />
         </div>
       )}
-      <p className="text-xs text-slate-500 dark:text-slate-400">Wartości są szacunkowe.</p>
-    </section>
+      {days.isError && <ErrorMessage message={describeError(days.error)} />}
+      {days.isSuccess && !hasAny && <EmptyState title="Brak wpisów w tym okresie." />}
+      {days.isSuccess && hasAny && (
+        <>
+          {/* The chart is visual only; screen readers get the same numbers as a list. */}
+          <ul className="sr-only" aria-label="Kalorie dzień po dniu">
+            {data.map((d) => (
+              <li key={d.day}>
+                {d.day}: {d.kcal} kcal
+              </li>
+            ))}
+          </ul>
+          <div aria-hidden="true" className="h-64 text-ink-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data}>
+                <CartesianGrid vertical={false} stroke={token('line')} />
+                <XAxis
+                  dataKey="day"
+                  stroke={token('line-strong')}
+                  tick={{ fill: 'currentColor', fontSize: 12 }}
+                />
+                <YAxis
+                  stroke={token('line-strong')}
+                  tick={{ fill: 'currentColor', fontSize: 12 }}
+                  unit=" kcal"
+                  width={70}
+                />
+                <Tooltip
+                  cursor={{ fill: token('line-soft') }}
+                  contentStyle={{
+                    background: token('raised'),
+                    color: token('ink'),
+                    border: `1px solid ${token('line-strong')}`,
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                  formatter={(value) => [`${value} kcal`, 'Szacunek']}
+                />
+                <Bar dataKey="kcal" name="kcal" fill={token('accent')} />
+                {goal !== null && (
+                  <ReferenceLine
+                    y={goal}
+                    stroke={token('warning')}
+                    strokeDasharray="4 4"
+                    label={{ value: 'Cel', fill: token('warning'), position: 'insideTopRight' }}
+                  />
+                )}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+      <p className="text-caption text-ink-3">Wartości są szacunkowe.</p>
+    </Card>
   )
 }
