@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     robots_error_cache_ttl_sec: int = 600  # an unreachable robots.txt is retried sooner
     import_rate_limit_per_min: int = 10  # imports that reach the network, per user
 
+    # --- Recipe import: step images (local copies) ---
+    media_dir: str = "/media"  # outside /app on purpose: /app is a bind mount in dev
+    image_max_bytes: int = 5 * 1024 * 1024  # per file, counted after decompression
+    image_max_per_recipe: int = 30
+    image_total_budget_sec: float = 60.0  # all step images of one import; the rest is skipped
+
     # --- AI import (Anthropic API, called from the backend only) ---
     ai_model: str = "claude-haiku-5-5"  # cheap and fast; swap for a stronger model via AI_MODEL
     ai_timeout_sec: float = 60.0
