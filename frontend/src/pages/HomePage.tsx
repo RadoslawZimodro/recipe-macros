@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { CARD_LINK } from '../components/ui/cardClass'
 
 const SHORTCUTS = [
   { to: '/recipes', title: 'Przepisy', hint: 'Twoje zapisane przepisy' },
@@ -23,7 +24,7 @@ export function HomePage() {
             <li key={s.to}>
               <Link
                 to={s.to}
-                className="block h-full space-y-1 rounded-md border border-line bg-surface p-6 transition-[background-color,border-color] duration-150 ease-soft hover:border-line-strong hover:bg-raised"
+                className={`${CARD_LINK} block h-full space-y-1`}
               >
                 <span className="block font-display text-h3 font-semibold">{s.title}</span>
                 <span className="block text-small text-ink-3">{s.hint}</span>

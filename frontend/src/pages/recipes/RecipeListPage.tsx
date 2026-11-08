@@ -5,6 +5,7 @@ import { describeError } from '../../api/messages'
 import { listRecipes, RECIPES_PAGE_SIZE } from '../../api/recipes'
 import { ErrorMessage } from '../../components/Field'
 import { Button } from '../../components/ui/Button'
+import { CARD_LINK } from '../../components/ui/cardClass'
 import { buttonClass } from '../../components/ui/buttonClass'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Input } from '../../components/ui/Input'
@@ -74,7 +75,7 @@ export function RecipeListPage() {
             {data.items.map((recipe) => (
               <li
                 key={recipe.id}
-                className="relative h-full space-y-2 rounded-md border border-line bg-surface p-6 transition-[background-color,border-color] duration-150 ease-soft focus-within:border-line-strong hover:border-line-strong hover:bg-raised"
+                className={`${CARD_LINK} relative h-full space-y-2 focus-within:border-line-strong`}
               >
                 {/* The title link is stretched over the whole card; the meta line stays outside the link name. */}
                 <Link

@@ -6,6 +6,7 @@ import { describeError } from '../../api/messages'
 import { importRecipe } from '../../api/recipes'
 import { ErrorMessage, Field } from '../../components/Field'
 import { Button } from '../../components/ui/Button'
+import { MUTED_LINK } from '../../components/ui/linkClass'
 import { Spinner } from '../../components/ui/Spinner'
 
 // Polish texts for the API's stable import error codes.
@@ -82,7 +83,7 @@ export function RecipeImportPage() {
           <Button type="submit" loading={mutation.isPending}>
             {mutation.isPending ? 'Importowanie…' : 'Importuj'}
           </Button>
-          <Link to="/recipes" className="text-small text-ink-2 underline underline-offset-2 hover:text-ink">
+          <Link to="/recipes" className={`text-small ${MUTED_LINK}`}>
             Wróć do listy
           </Link>
         </div>

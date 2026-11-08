@@ -19,6 +19,7 @@ import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Chip } from '../../components/ui/Chip'
 import { Input } from '../../components/ui/Input'
+import { ACCENT_LINK, MUTED_LINK } from '../../components/ui/linkClass'
 import { MacroFigure } from '../../components/ui/MacroFigure'
 import { Modal } from '../../components/ui/Modal'
 import { Skeleton, Spinner } from '../../components/ui/Spinner'
@@ -289,7 +290,7 @@ export function RecipeDetailPage() {
         <ErrorMessage
           message={describeError(recipe.error, { 404: 'Nie znaleziono takiego przepisu.' })}
         />
-        <Link to="/recipes" className="text-small text-ink-2 underline underline-offset-2 hover:text-ink">
+        <Link to="/recipes" className={`text-small ${MUTED_LINK}`}>
           Wróć do listy
         </Link>
       </div>
@@ -324,7 +325,7 @@ export function RecipeDetailPage() {
                 href={data.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-accent underline underline-offset-2 hover:text-accent-strong"
+                className={ACCENT_LINK}
               >
                 Zobacz oryginalny przepis
               </a>
@@ -342,7 +343,7 @@ export function RecipeDetailPage() {
         {data.ingredients.length === 0 ? (
           <p className="text-ink-2">Ten przepis nie ma składników.</p>
         ) : (
-          // A list, not a Table: every line can switch into an inline weight editor.
+          // A list, not a table: every line can switch into an inline weight editor.
           <ul className="divide-y divide-line-soft">
             {data.ingredients.map((line) => (
               <IngredientRow

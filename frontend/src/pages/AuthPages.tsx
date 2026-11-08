@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { ErrorMessage, Field } from '../components/Field'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { ACCENT_LINK } from '../components/ui/linkClass'
 
 interface AuthFormProps {
   mode: 'login' | 'register'
@@ -85,7 +86,7 @@ function AuthForm({ mode }: AuthFormProps) {
       </form>
       <p className="text-small text-ink-2">
         {text.other}{' '}
-        <Link to={text.otherTo} className="font-medium text-accent underline underline-offset-2 hover:text-accent-strong">
+        <Link to={text.otherTo} className={`font-medium ${ACCENT_LINK}`}>
           {text.otherLink}
         </Link>
       </p>

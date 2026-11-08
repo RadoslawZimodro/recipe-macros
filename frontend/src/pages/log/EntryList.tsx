@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { FoodLogEntry } from '../../api/foodLog'
 import { Button } from '../../components/ui/Button'
 import { EmptyState } from '../../components/ui/EmptyState'
+import { ACCENT_LINK } from '../../components/ui/linkClass'
 import { fmt, macrosText } from './format'
 
 export function EntryList({
@@ -25,7 +26,7 @@ export function EntryList({
               {entry.kind === 'recipe' && entry.recipe_id !== null ? (
                 <Link
                   to={`/recipes/${entry.recipe_id}`}
-                  className="text-accent underline underline-offset-2 hover:text-accent-strong"
+                  className={ACCENT_LINK}
                 >
                   {entry.name}
                 </Link>

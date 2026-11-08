@@ -45,7 +45,7 @@ export function SegmentedControl<T extends string>({
       role={tabs ? 'tablist' : 'group'}
       aria-label={label}
       onKeyDown={onKeyDown}
-      className="inline-flex gap-1 rounded-sm border border-line bg-inset p-1"
+      className="inline-flex gap-1 rounded-md border border-line bg-inset p-1"
     >
       {options.map((o) => {
         const active = o.value === value
