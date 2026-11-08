@@ -4,6 +4,8 @@ Every function runs inside the caller's request session, which already has the R
 bound (get_current_user), so queries only ever see the current user's rows.
 """
 
+from pathlib import Path
+
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Recipe, RecipeIngredient, RecipeStep
 from app.schemas.recipe import LinePatch, RecipeIn, RecipeListOut, RecipeOut, RecipeSummary
+from app.services.media import StoredImage, delete_images, image_file
 from app.services.sql import like_pattern, load_sql
 
 _SOURCE_URL_INDEX = "uq_recipes_user_source_url"
@@ -50,11 +53,23 @@ def _scalar_fields(payload: RecipeIn) -> dict:
 
 
 def build_children(
-    recipe_id: int, user_id: int, payload: RecipeIn
+    recipe_id: int,
+    user_id: int,
+    payload: RecipeIn,
+    images: dict[int, StoredImage] | None = None,
 ) -> list[RecipeStep | RecipeIngredient]:
-    """Build step and ingredient rows; list order becomes `position` (1-based)."""
+    """Build step and ingredient rows; list order becomes `position` (1-based).
+    `images` maps a step position to the picture it keeps."""
+    images = images or {}
     steps = [
-        RecipeStep(recipe_id=recipe_id, user_id=user_id, position=pos, instruction=step.instruction)
+        RecipeStep(
+            recipe_id=recipe_id,
+            user_id=user_id,
+            position=pos,
+            instruction=step.instruction,
+            image_path=images[pos].name if pos in images else None,
+            image_content_type=images[pos].content_type if pos in images else None,
+        )
         for pos, step in enumerate(payload.steps, start=1)
     ]
     lines = [
@@ -109,14 +124,37 @@ def replace_recipe(session: Session, recipe_id: int, payload: RecipeIn) -> None:
         raise _not_found()
     _validate_references(session, payload)
 
+    # A picture stays with its step only if the step kept its position and its text; the
+    # client cannot set pictures, so everything else is dropped (and its file removed below).
+    old = {
+        row.position: row
+        for row in session.execute(
+            # columns, not entities: the rows are deleted and re-created below
+            select(
+                RecipeStep.position,
+                RecipeStep.instruction,
+                RecipeStep.image_path,
+                RecipeStep.image_content_type,
+            ).where(RecipeStep.recipe_id == recipe_id)
+        )
+    }
+    kept = {
+        pos: StoredImage(old[pos].image_path, old[pos].image_content_type)
+        for pos, step in enumerate(payload.steps, start=1)
+        if pos in old and old[pos].image_path and old[pos].instruction == step.instruction
+    }
+    dropped = [r.image_path for r in old.values() if r.image_path]
+    dropped = [n for n in dropped if n not in {i.name for i in kept.values()}]
+
     for field, value in _scalar_fields(payload).items():
         setattr(recipe, field, value)
     # Delete first (executed immediately), then insert: the (recipe_id, position) keys of
     # the new rows would otherwise collide with the old ones at flush time.
     session.execute(delete(RecipeStep).where(RecipeStep.recipe_id == recipe_id))
     session.execute(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_id))
-    session.add_all(build_children(recipe_id, recipe.user_id, payload))
+    session.add_all(build_children(recipe_id, recipe.user_id, payload, kept))
     _commit(session)
+    delete_images(dropped)  # only after the commit: on a failure the old pictures stay valid
 
 
 def delete_recipe(session: Session, recipe_id: int) -> None:
@@ -191,3 +229,14 @@ def list_recipes(
         limit=limit,
         offset=offset,
     )
+
+
+def get_step_image(session: Session, recipe_id: int, position: int) -> tuple[Path, str]:
+    """The file and content type of a step's picture; 404 if there is none (or not yours)."""
+    row = session.execute(
+        load_sql("get_step_image.sql"), {"recipe_id": recipe_id, "position": position}
+    ).first()
+    path = image_file(row.image_path) if row else None
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Image not found")
+    return path, row.image_content_type
