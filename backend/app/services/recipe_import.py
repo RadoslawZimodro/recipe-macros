@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 from redis import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -31,6 +31,7 @@ from app.services import ai_merge
 from app.services.ai_client import AIUnavailable
 from app.services.ai_extract import AIInvalidOutput, NoRecipeOnPage, RecipeAI
 from app.services.limits import RateLimitExceeded, check_rate_limit
+from app.services.media import StoredImage, delete_images
 from app.services.page_fetcher import PageFetcher
 from app.services.page_text import page_content
 from app.services.products import resolve_products
@@ -38,6 +39,7 @@ from app.services.recipe_extractor import ExtractedRecipe, extract_recipe
 from app.services.recipes import build_children, get_recipe
 from app.services.safe_fetch import FetchedPage, FetchError
 from app.services.sql import load_sql
+from app.services.step_images import discard, download_step_images
 from app.services.urls import UrlError, normalize_url
 
 logger = logging.getLogger(__name__)
@@ -106,8 +108,14 @@ def _enforce_rate_limit(redis: Redis, user_id: int) -> None:
         ) from None
 
 
-def _save(session: Session, user_id: int, extracted: ExtractedRecipe) -> tuple[int, bool]:
-    """Upsert the recipe row, then replace its steps and ingredient lines. One transaction."""
+def _save(
+    session: Session,
+    user_id: int,
+    extracted: ExtractedRecipe,
+    images: dict[int, StoredImage],
+) -> tuple[int, bool, list[str]]:
+    """Upsert the recipe row, then replace its steps and ingredient lines. One transaction.
+    Also returns the file names of the pictures the old steps had (to delete after the commit)."""
     recipe = extracted.recipe
     row = session.execute(
         load_sql("upsert_imported_recipe.sql"),
@@ -127,12 +135,29 @@ def _save(session: Session, user_id: int, extracted: ExtractedRecipe) -> tuple[i
             "import_method": extracted.method,
         },
     ).one()
+    old = session.execute(
+        select(
+            RecipeStep.position,
+            RecipeStep.instruction,
+            RecipeStep.image_path,
+            RecipeStep.image_content_type,
+        ).where(RecipeStep.recipe_id == row.id, RecipeStep.image_path.is_not(None))
+    ).all()
+    # A step with no new picture (download failed, or the page has none) keeps its old one
+    # while its position and text are unchanged; same rule as replace_recipe.
+    images = dict(images)
+    for pos, instruction, path, content_type in old:
+        step = recipe.steps[pos - 1] if pos <= len(recipe.steps) else None
+        if pos not in images and step is not None and step.instruction == instruction:
+            images[pos] = StoredImage(path, content_type)
+    used = {img.name for img in images.values()}
+    old_files = [path for _, _, path, _ in old if path not in used]
     # On a refresh the old children go first; the (recipe_id, position) keys would collide.
     session.execute(delete(RecipeStep).where(RecipeStep.recipe_id == row.id))
     session.execute(delete(RecipeIngredient).where(RecipeIngredient.recipe_id == row.id))
-    session.add_all(build_children(row.id, user_id, recipe))
+    session.add_all(build_children(row.id, user_id, recipe, images))
     session.commit()
-    return row.id, row.inserted
+    return row.id, row.inserted, old_files
 
 
 def _with_ai(
@@ -231,7 +256,25 @@ def import_recipe(
         notice = f"{exc.message} The basic version was saved (ingredients as plain text)."
         logger.warning("ai_unavailable_fallback code=%s", exc.code)
 
-    recipe_id, inserted = _save(session, user_id, final)
+    # Pictures are downloaded without a database transaction open, after the AI has settled
+    # the final steps (it may have changed their number; then the pictures are already dropped).
+    session.commit()
+    stored, skipped = download_step_images(fetcher, final.step_images)
+    if extracted is not None:  # pictures the AI's changed step count made unusable
+        skipped += sum(1 for u in extracted.step_images if u) - sum(
+            1 for u in final.step_images if u
+        )
+    images = {pos: img for pos, img in enumerate(stored, start=1) if img is not None}
+    try:
+        recipe_id, inserted, old_files = _save(session, user_id, final, images)
+    except Exception:
+        session.rollback()
+        discard(stored)  # no orphan files when the save fails
+        raise
+    delete_images(old_files)  # the refresh replaced them
+    if skipped:
+        note = f"{skipped} step picture(s) could not be saved; those steps have no picture."
+        notice = f"{notice} {note}" if notice else note
     return ImportResult(
         get_recipe(session, recipe_id),
         "created" if inserted else "refreshed",

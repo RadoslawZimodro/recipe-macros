@@ -1,6 +1,8 @@
 """Recipe CRUD. Every endpoint requires a session; state-changing ones also require CSRF."""
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import Path as PathParam
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_session
@@ -58,6 +60,27 @@ def get_nutrition(
     """Macronutrients of the recipe: total and per serving, always flagged as an estimate, with
     the coverage, the share backed by non-AI data, and the source of every line."""
     return nutrition_service.get_nutrition(session, recipe_id, include_optional=include_optional)
+
+
+@router.get("/{recipe_id}/steps/{position}/image", response_class=FileResponse)
+def get_step_image(
+    recipe_id: int = PathParam(ge=1, le=2_147_483_647),  # int4: larger ids would be a DB error
+    position: int = PathParam(ge=1, le=10_000),
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    """The saved picture of a step (a local copy made at import). 404 if the recipe is not
+    yours or the step has none. Private cache only: the picture is behind the login."""
+    path, content_type = recipe_service.get_step_image(session, recipe_id, position)
+    return FileResponse(
+        path,
+        media_type=content_type,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=86400",
+            # Belt and braces: if the file is ever opened directly, nothing in it can run.
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
 
 
 @router.patch("/{recipe_id}/ingredients/{line_id}", response_model=RecipeOut)

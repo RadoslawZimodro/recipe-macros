@@ -48,6 +48,8 @@ class ExtractedRecipe:
     recipe: RecipeIn
     source_nutrition: dict[str, Any] | None
     method: str  # "jsonld" | "microdata": stored as the recipe's import_method
+    # Picture address per step, parallel to recipe.steps (empty = the page had none).
+    step_images: tuple[str | None, ...] = ()
 
 
 # --- text helpers ---
@@ -122,11 +124,12 @@ def _image_url(value: Any, base_url: str) -> str | None:
     return None
 
 
-def _collect_steps(value: Any, out: list[str], depth: int = 0) -> None:
+def _collect_steps(value: Any, out: list[tuple[str, Any]], depth: int = 0) -> None:
+    """Append (text, raw image value) per step line; only a HowToStep can carry an image."""
     if depth > MAX_DEPTH or len(out) >= MAX_STEPS:
         return
     if isinstance(value, str):
-        out.extend(_clean_lines(value))
+        out.extend((line, None) for line in _clean_lines(value))
     elif isinstance(value, list):
         for item in value:
             _collect_steps(item, out, depth + 1)
@@ -136,18 +139,24 @@ def _collect_steps(value: Any, out: list[str], depth: int = 0) -> None:
         ):
             _collect_steps(value.get("itemListElement"), out, depth + 1)
         else:  # HowToStep: prefer its text, fall back to its name
-            out.extend(_clean_lines(value.get("text") or value.get("name")))
+            lines = _clean_lines(value.get("text") or value.get("name"))
+            # A picture belongs to the step as a whole: with several lines it is ambiguous.
+            image = value.get("image") if len(lines) == 1 else None
+            out.extend((line, image) for line in lines)
 
 
-def _steps(value: Any) -> list[StepIn]:
-    lines: list[str] = []
-    _collect_steps(value, lines)
+def _steps(value: Any, base_url: str) -> tuple[list[StepIn], list[str | None]]:
+    """The steps and, in the same order, the address of each step's picture (or None)."""
+    pairs: list[tuple[str, Any]] = []
+    _collect_steps(value, pairs)
     steps: list[str] = []
-    for line in lines:
+    images: list[str | None] = []
+    for line, image in pairs:
         line = _STEP_NUMBER.sub("", line).strip()
         if line and (not steps or steps[-1] != line):
             steps.append(line[:5000])
-    return [StepIn(instruction=s) for s in steps[:MAX_STEPS]]
+            images.append(_image_url(image, base_url) if image else None)
+    return [StepIn(instruction=s) for s in steps[:MAX_STEPS]], images[:MAX_STEPS]
 
 
 def _is_section_header(line: str) -> bool:
@@ -231,7 +240,7 @@ def _recipe_nodes(soup: BeautifulSoup) -> Iterator[dict]:
 
 def _build(node: dict, base_url: str, source_url: str, method: str) -> ExtractedRecipe | None:
     title = _one_line(_first(node.get("name")))
-    steps = _steps(node.get("recipeInstructions"))
+    steps, step_images = _steps(node.get("recipeInstructions"), base_url)
     ingredients = _ingredients(node)
     if not title or not (steps or ingredients):
         return None  # a bare teaser (name only) is not a usable recipe
@@ -252,7 +261,10 @@ def _build(node: dict, base_url: str, source_url: str, method: str) -> Extracted
     except ValidationError:
         return None
     return ExtractedRecipe(
-        recipe=recipe, source_nutrition=_nutrition(node.get("nutrition")), method=method
+        recipe=recipe,
+        source_nutrition=_nutrition(node.get("nutrition")),
+        method=method,
+        step_images=tuple(step_images) if any(step_images) else (),
     )
 
 

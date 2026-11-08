@@ -99,6 +99,8 @@ class RecipeIn(BaseModel):
 class StepOut(BaseModel):
     position: int
     instruction: str
+    # Relative address of the saved picture (served by our API), or null. Output only.
+    image_url: str | None = None
 
 
 class IngredientLineOut(BaseModel):

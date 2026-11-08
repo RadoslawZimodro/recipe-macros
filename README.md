@@ -195,6 +195,7 @@ Everything below needs a session; `POST`/`PUT`/`DELETE` also need the `X-CSRF-To
 | `GET /recipes/{id}/nutrition` | Macronutrients of a recipe, total and per serving, with coverage and sources (see "Macronutrients") |
 | `PATCH /recipes/{id}/ingredients/{line_id}` | Correct one ingredient line: type in its weight in grams and/or change its product |
 | `POST /recipes/import` | Import a recipe from a link (see below) |
+| `GET /recipes/{id}/steps/{position}/image` | The saved picture of a step (`404` if none or not yours); see "Step pictures" |
 
 Other users' recipes return `404`, not `403`, so their existence is not revealed.
 Nutrition values are estimates and carry a `source` (`usda`, `manual`, `llm_estimate`).
@@ -397,6 +398,44 @@ ON CONFLICT (user_id, source_url) WHERE source_url IS NOT NULL AND deleted_at IS
 DO UPDATE SET title = EXCLUDED.title, ..., imported_at = EXCLUDED.imported_at
 RETURNING id, (xmax = 0) AS inserted;   -- xmax <> 0 means an existing row was updated
 ```
+
+### Step pictures
+
+If a step in the page's JSON-LD / Microdata has an `image` (a URL, an `ImageObject` or a list;
+relative links are resolved against the page, anything but `http(s)` is ignored), the import saves
+a **local copy**. Each step in the API answer has `image_url`: `null`, or the relative address
+`/recipes/{id}/steps/{position}/image` of our own endpoint. That endpoint needs a session, answers
+with the stored `Content-Type`, `X-Content-Type-Options: nosniff` and
+`Cache-Control: private, max-age=86400`; a recipe that is not yours returns `404`. Clients can
+never send `image_url` (the step body of `POST`/`PUT` has only `instruction`), so no URL or path can
+be injected.
+
+- **Download.** Through the same SSRF-safe fetcher as pages (pinned IP, redirects re-validated), but
+  with its own limits: 5 MB per file (after decompression), 30 pictures per recipe, the usual
+  connect/read timeouts, and a hard 60 s ceiling for the whole picture phase: each download gets only
+  the time that is left (never more than the normal 15 s), and pictures still waiting when the time runs
+  out are skipped and counted in the `notice`. robots.txt is not consulted again for pictures (the page itself was
+  allowed).
+- **Type by content.** The first bytes decide (JPEG, PNG, WebP, GIF), not the `Content-Type` header or
+  the extension, so an SVG (which can carry scripts) or an HTML file renamed to `.jpg` is rejected.
+- **Names.** Files are saved as `<uuid hex>.<ext>` in `MEDIA_DIR` (in compose it is
+  `/app/media`, the `media` volume, see "Media volume"; the code's default `/media` is only a fallback
+  when running outside compose); the name never comes from a URL, so there is no path traversal. The database
+  stores only that name and a CHECK constraint enforces its shape.
+- **Schema.** Two nullable columns on `recipe_steps` (a step has at most one picture) instead of a new
+  table: the existing Row-Level Security policy and the composite foreign key to the recipe apply
+  as they are.
+- **A bad picture never breaks an import.** Failure, timeout, rejection or a limit only leaves that
+  step without a picture; the answer's `notice` says how many were skipped.
+- **AI keeps pictures only when it is safe.** The AI may merge or split steps. If the number of steps
+  after the AI differs from the number on the page, no pictures are attached: no picture is better
+  than a picture on the wrong step.
+- **Files follow the database.** `refresh` replaces the pictures and deletes the old files; a failed
+  save deletes the new files. `PUT /recipes/{id}` keeps a picture only for a step that has the same
+  position *and* the same text as before; other pictures are removed together with their files.
+  `refresh` follows the same rule: a step whose new picture failed to download (or that has none now)
+  keeps its old picture while its position and text are unchanged.
+  Soft delete leaves the files (the recipe can still be referenced by the food log).
 
 ## AI import
 
@@ -658,6 +697,8 @@ erDiagram
         int position PK
         int user_id "denormalized for RLS"
         text instruction
+        text image_path "generated file name in MEDIA_DIR, nullable"
+        text image_content_type "detected from the bytes, nullable"
     }
     recipe_ingredients {
         int id PK

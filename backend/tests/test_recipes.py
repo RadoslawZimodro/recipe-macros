@@ -130,7 +130,7 @@ def test_put_replaces_scalars_steps_and_lines(alice):
     updated = response.json()
     assert updated["id"] == created["id"]
     assert updated["title"] == "Pankejki" and updated["servings"] == 2 and updated["tags"] == []
-    assert updated["steps"] == [{"position": 1, "instruction": "Jedyny krok."}]
+    assert updated["steps"] == [{"position": 1, "instruction": "Jedyny krok.", "image_url": None}]
     assert [i["raw_text"] for i in updated["ingredients"]] == ["mleko"]
     assert updated["ingredients"][0]["quantity"] == 0.5
     assert updated["updated_at"] > created["updated_at"]  # set by the DB trigger

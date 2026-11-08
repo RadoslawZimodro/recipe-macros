@@ -79,7 +79,10 @@ def merge_refinement(
         RecipeIn.model_validate(recipe.model_dump())
     except (ValidationError, IndexError) as exc:
         raise AIInvalidOutput(f"the merged recipe is not valid: {exc}") from None
-    return ExtractedRecipe(recipe, extracted.source_nutrition, METHOD)
+    # The AI may merge or split steps. Pictures are kept only when the step count is unchanged
+    # (same positions); otherwise no picture is better than a picture on the wrong step.
+    images = extracted.step_images if len(recipe.steps) == len(original.steps) else ()
+    return ExtractedRecipe(recipe, extracted.source_nutrition, METHOD, images)
 
 
 def recipe_from_page(
