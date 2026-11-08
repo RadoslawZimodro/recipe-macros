@@ -4,6 +4,7 @@ import { api } from './client'
 export interface RecipeStep {
   position: number
   instruction: string
+  image_url: string | null // relative to the API, e.g. /recipes/12/steps/3/image
 }
 
 export interface IngredientLine {

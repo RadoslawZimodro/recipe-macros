@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { describeError } from '../../api/messages'
@@ -14,6 +14,7 @@ import {
   type NutritionLine,
   type Source,
 } from '../../api/recipes'
+import { CookingMode } from '../../components/CookingMode'
 import { ErrorMessage } from '../../components/Field'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
@@ -248,6 +249,8 @@ export function RecipeDetailPage() {
   const location = useLocation()
   const importNotice = (location.state as { notice?: string | null } | null)?.notice ?? null
   const [confirming, setConfirming] = useState(false)
+  const [cooking, setCooking] = useState(false)
+  const cookingButton = useRef<HTMLButtonElement>(null)
 
   const recipe = useQuery({
     queryKey: ['recipes', id],
@@ -319,6 +322,13 @@ export function RecipeDetailPage() {
             {data.prep_time_min !== null && ` · Przygotowanie: ${data.prep_time_min} min`}
             {data.cook_time_min !== null && ` · Gotowanie: ${data.cook_time_min} min`}
           </p>
+          <Button
+            ref={cookingButton}
+            onClick={() => setCooking(true)}
+            disabled={data.steps.length === 0}
+          >
+            Tryb gotowania
+          </Button>
           {data.source_url && isHttpUrl(data.source_url) && (
             <p className="text-small">
               <a
@@ -380,6 +390,15 @@ export function RecipeDetailPage() {
           Usuń przepis
         </Button>
       </section>
+
+      <CookingMode
+        open={cooking}
+        onClose={() => setCooking(false)}
+        title={data.title}
+        steps={data.steps}
+        ingredients={data.ingredients}
+        opener={cookingButton}
+      />
 
       <Modal open={confirming} onClose={() => setConfirming(false)} title="Usunąć przepis?">
         <p className="text-ink-2">Na pewno usunąć ten przepis?</p>

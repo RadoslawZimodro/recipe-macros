@@ -1,9 +1,9 @@
-import type { ButtonHTMLAttributes } from 'react'
+import type { ComponentProps } from 'react'
 import { buttonClass } from './buttonClass'
 import type { ButtonVariant } from './buttonClass'
 import { Spinner } from './Spinner'
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ComponentProps<'button'> {
   variant?: ButtonVariant
   /** Disables the button and shows a spinner; the label stays so the width does not jump. */
   loading?: boolean
