@@ -134,6 +134,17 @@ The interface is in Polish (code and comments stay in English) and dark only (se
   messages, e.g. for Instagram/TikTok/YouTube) and `/recipes/:id` (ingredients, steps, link to
   the original, macros total and per serving always labelled "szacunek" with the data sources,
   manual correction of an ingredient's weight, delete).
+- **Cooking mode.** "Tryb gotowania" on `/recipes/:id` (disabled without steps) opens a native
+  modal `<dialog>` (full screen on a phone) with one step at a time: "Krok 3 z 8", a progress bar,
+  the step photo if there is one, Wstecz / Dalej / Zakończ, numbered buttons to jump, and a collapsed
+  "Składniki" panel. Arrow keys change the step, Escape or a click on the backdrop closes it, page
+  scrolling is locked and focus returns to the opening button. A photo that fails to load is hidden
+  and the step shows without it; the next photo is preloaded.
+  Step photos: the API returns `image_url` relative to itself (`/recipes/12/steps/3/image`); the
+  frontend prefixes `VITE_API_URL`, the same base as every API call. The app and the API differ
+  only by port (`localhost:5180` / `localhost:8010`), which is the same site, so the browser sends
+  the HttpOnly session cookies with the `<img>` request and no Vite proxy is needed. Serving the
+  app and the API from different sites (other hostnames) would break photos.
 - **Pantry.** `/pantry` lets you add products through a search box (`GET /ingredients?q=`), mark
   products as always at home (`/staples`) and shows recipes sorted by how many required
   ingredients you have, with the missing lines and a link to the recipe.
